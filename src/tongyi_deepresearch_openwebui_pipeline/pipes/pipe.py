@@ -3,7 +3,7 @@ id: tongyi_deepresearch_pipe
 title: Tongyi DeepResearch
 author: starship-s
 author_url: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline
-version: 0.2.5
+version: 0.2.6
 license: MIT
 description: Agentic deep-research pipe for Open WebUI, powered by Tongyi DeepResearch.
 required_open_webui_version: 0.5.0
@@ -140,8 +140,7 @@ _TOOL_DEFINITIONS = [
 # =========================================================================== #
 
 _SYSTEM_PROMPT_TEMPLATE = """\
-You are a deep research assistant. Today's date is \
-{human_date} ({iso_date}). Your core function is to \
+You are a deep research assistant. Your core function is to \
 conduct thorough, multi-source investigations into \
 any topic. You must handle both broad, open-domain \
 inquiries and queries within specialized academic \
@@ -168,7 +167,9 @@ For each function call, return a json object with \
 function name and arguments within XML tags:
 <tool_call>
 {{"name": <function-name>, "arguments": <args-json-object>}}
-</tool_call>"""
+</tool_call>
+
+Current date: {human_date} ({iso_date})"""
 
 
 # =========================================================================== #
@@ -510,7 +511,7 @@ class Pipe:
             tool_defs = list(_TOOL_DEFINITIONS)
         tools_json = "\n".join(json.dumps(t, ensure_ascii=False) for t in tool_defs)
         prompt = _SYSTEM_PROMPT_TEMPLATE.format(
-            human_date=today.strftime("%A, %B %d, %Y"),
+            human_date=today.strftime("%Y-%m-%d"),
             iso_date=today.isoformat(),
             tool_definitions=tools_json,
         )
@@ -536,13 +537,7 @@ class Pipe:
             )
 
     async def _emit_message(self, text: str) -> None:
-        if self._event_emitter:
-            await self._event_emitter(
-                {
-                    "type": "message",
-                    "data": {"content": text},
-                }
-            )
+        self._message_buffer += text
 
     # ================================================================== #
     #  LLM streaming client                                                #
@@ -1221,6 +1216,7 @@ class Pipe:
     ) -> str:
         """Entry point called by Open WebUI for every user message."""
         self._store_request_context(__user__, __event_emitter__, __request__)
+        self._message_buffer = ""
 
         error = self._preflight_check()
         if error:
@@ -1229,7 +1225,8 @@ class Pipe:
         messages = self._build_initial_messages(body)
         tracker = _CostTracker()
 
-        return await self._run_agentic_loop(messages, tracker)
+        answer = await self._run_agentic_loop(messages, tracker)
+        return self._message_buffer + answer
 
     # ---- pipe helpers ------------------------------------------------ #
 

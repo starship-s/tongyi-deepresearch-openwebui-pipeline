@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.6] - 2026-02-18
+
+### Fixed
+
+- Thinking (`<think>`) blocks and tool-call cards (`<details type="tool_calls">`)
+  no longer render as raw text in the chat window. Content is now buffered
+  internally and returned from `pipe()` so Open WebUI processes the tags
+  correctly as collapsible elements.
+
+### Changed
+
+- System prompt date moved to end of prompt and simplified to `YYYY-MM-DD`
+  format for better model comprehension.
+
 ## [0.2.5] - 2026-02-18
 
 ### Removed
@@ -66,7 +80,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Pipe delegates `visit` calls to the standalone tool when `VISIT_TOOL_ENABLED=True`.
 - Project is now installable via `pip install` using hatchling.
 
-[Unreleased]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.5...HEAD
+[Unreleased]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.6...HEAD
+[0.2.6]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.5...v0.2.6
 [0.2.5]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.4...v0.2.5
 [0.2.4]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.0...v0.2.3
