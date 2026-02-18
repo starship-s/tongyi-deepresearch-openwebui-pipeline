@@ -3,7 +3,7 @@ id: deepresearch_visit_tool
 title: DeepResearch Visit Tool
 author: starship-s
 author_url: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline
-version: 0.1.1
+version: 0.2.7
 license: MIT
 description: Visits URLs and extracts evidence via a dedicated extractor LLM call.
 requirements: httpx

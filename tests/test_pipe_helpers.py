@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from tongyi_deepresearch_openwebui_pipeline.pipes.pipe import (
+from tongyi_deepresearch_openwebui_pipeline.pipes.tongyi_deepresearch_pipe import (
     Pipe,
     _CostTracker,
     _fmt_visit_fallback,

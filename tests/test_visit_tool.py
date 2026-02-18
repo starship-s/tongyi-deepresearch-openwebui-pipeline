@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from tongyi_deepresearch_openwebui_pipeline.tools.visit_tool import Tools
+from tongyi_deepresearch_openwebui_pipeline.tools.deepresearch_visit_tool import Tools
 
 
 class TestFmtVisitOk:

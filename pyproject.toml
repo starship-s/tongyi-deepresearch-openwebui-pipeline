@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "tongyi-deepresearch-openwebui-pipeline"
-version = "0.2.6"
+version = "0.2.7"
 description = "Agentic deep-research pipe and tools for Open WebUI, powered by Tongyi DeepResearch via OpenAI-compatible API."
 readme = "README.md"
 requires-python = "~=3.11.0"
@@ -117,10 +117,10 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101", "D102", "PLR2004"]
 # Shim / source files use Open WebUI metadata docstrings, not standard pydocstyle.
-"src/**/pipe.py" = ["D205", "D212", "D415"]
-"src/**/search_tool.py" = ["D205", "D212", "D415"]
-"src/**/scholar_tool.py" = ["D205", "D212", "D415"]
-"src/**/visit_tool.py" = ["D205", "D212", "D415"]
+"src/**/tongyi_deepresearch_pipe.py" = ["D205", "D212", "D415"]
+"src/**/deepresearch_search_tool.py" = ["D205", "D212", "D415"]
+"src/**/deepresearch_scholar_tool.py" = ["D205", "D212", "D415"]
+"src/**/deepresearch_visit_tool.py" = ["D205", "D212", "D415"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"

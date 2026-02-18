@@ -20,14 +20,14 @@ Function (pipe) or Tool.
 src/tongyi_deepresearch_openwebui_pipeline/
 ├── __init__.py
 ├── pipes/
-│   └── pipe.py                               ← main pipe implementation
+│   └── tongyi_deepresearch_pipe.py           ← main pipe implementation
 └── tools/
-    ├── search_tool.py                        ← search tool (raw snippets)
-    ├── scholar_tool.py                       ← Google Scholar tool
-    └── visit_tool.py                         ← visit/extraction tool
+    ├── deepresearch_search_tool.py           ← search tool (raw snippets)
+    ├── deepresearch_scholar_tool.py          ← Google Scholar tool
+    └── deepresearch_visit_tool.py            ← visit/extraction tool
 ```
 
-## ReAct Loop (`src/tongyi_deepresearch_openwebui_pipeline/pipes/pipe.py`)
+## ReAct Loop (`src/tongyi_deepresearch_openwebui_pipeline/pipes/tongyi_deepresearch_pipe.py`)
 
 The core agentic behaviour lives in `Pipe.pipe()`. Each user message triggers a
 loop that alternates between model generation and tool execution:
@@ -120,17 +120,17 @@ respected by any new tool handler.
 
 | Tool | Handler | Notes |
 |---|---|---|
-| `search` | `search_tool.Tools.search()` | Controlled by `SEARCH_ENABLED`; returns raw snippets matching upstream training format |
-| `visit` | `visit_tool.Tools.visit()` or built-in `get_content_from_url()` | Controlled by `VISIT_ENABLED` |
-| `google_scholar` | `scholar_tool.Tools.google_scholar()` | Controlled by `SCHOLAR_ENABLED`; self-contained tool with `"academic research: "` prefix |
+| `search` | `deepresearch_search_tool.Tools.search()` | Controlled by `SEARCH_ENABLED`; returns raw snippets matching upstream training format |
+| `visit` | `deepresearch_visit_tool.Tools.visit()` or built-in `get_content_from_url()` | Controlled by `VISIT_ENABLED` |
+| `google_scholar` | `deepresearch_scholar_tool.Tools.google_scholar()` | Controlled by `SCHOLAR_ENABLED`; self-contained tool with `"academic research: "` prefix |
 | `PythonInterpreter` | Graceful error string | Not executable in this environment |
 | `parse_file` | Graceful error string | Not executable in this environment |
 
-## Search Tool Deep-Dive (`src/tongyi_deepresearch_openwebui_pipeline/tools/search_tool.py`)
+## Search Tool Deep-Dive (`src/tongyi_deepresearch_openwebui_pipeline/tools/deepresearch_search_tool.py`)
 
 The search tool returns **raw search snippets** with no LLM post-processing,
 matching the output format the model was trained on in the upstream DeepResearch
-repository (`tool_search.py`).
+repository.
 
 **Output format (per query):**
 
@@ -151,11 +151,10 @@ The tool delegates to Open WebUI's built-in `search_web()` for the actual HTTP
 requests. The pipe passes `request` and `user` objects so the tool can call
 `search_web` without needing its own API credentials.
 
-## Scholar Tool Deep-Dive (`src/tongyi_deepresearch_openwebui_pipeline/tools/scholar_tool.py`)
+## Scholar Tool Deep-Dive (`src/tongyi_deepresearch_openwebui_pipeline/tools/deepresearch_scholar_tool.py`)
 
-The scholar tool is a **self-contained** module (no imports from `search_tool`)
-that duplicates the `_search_single_query` logic with scholar-specific formatting,
-matching the upstream `tool_scholar.py`.
+The scholar tool is a **self-contained** module (no imports from `deepresearch_search_tool`)
+that duplicates the `_search_single_query` logic with scholar-specific formatting.
 
 **Output format (per query):**
 
@@ -171,7 +170,7 @@ Each query is automatically prefixed with `"academic research: "` before being
 sent to Open WebUI's `search_web()`. Multiple queries are separated by
 `\n=======\n`.
 
-## Visit Tool Deep-Dive (`src/tongyi_deepresearch_openwebui_pipeline/tools/visit_tool.py`)
+## Visit Tool Deep-Dive (`src/tongyi_deepresearch_openwebui_pipeline/tools/deepresearch_visit_tool.py`)
 
 The visit tool implements a three-stage pipeline in `Tools._process_url()`:
 
@@ -194,10 +193,10 @@ The visit tool implements a three-stage pipeline in `Tools._process_url()`:
 **Module resolution:** The static method `Pipe._resolve_visit_tools_class()`
 locates the visit tool's `Tools` class using four strategies, tried in order:
 
-1. **Package import** — `from tongyi_deepresearch_openwebui_pipeline.tools.visit_tool import Tools`.
+1. **Package import** — `from tongyi_deepresearch_openwebui_pipeline.tools.deepresearch_visit_tool import Tools`.
    Works when the package is pip-installed.
-2. **Direct module import** — `from visit_tool import Tools`. Works when
-   `visit_tool.py` is on `sys.path`.
+2. **Direct module import** — `from deepresearch_visit_tool import Tools`. Works when
+   `deepresearch_visit_tool.py` is on `sys.path`.
 3. **`sys.modules` scan** — iterates modules whose name starts with `tool_`
    (the naming convention Open WebUI uses when it `exec()`s tool code from the
    database) and picks the first one containing a `Tools` class with a callable
@@ -213,7 +212,7 @@ gracefully in non-Open-WebUI environments.
 **Note:** When `VISIT_ENABLED=True`, the pipe's `_execute_visit` method
 automatically propagates `API_KEY` into the visit tool's
 `SUMMARY_MODEL_API_KEY` valve, so users only need to configure one API key in
-most setups. The search and scholar tools do not require an API key — they use
+most setups.  The search and scholar tools do not require an API key — they use
 Open WebUI's built-in `search_web()` via the `request`/`user` context passed by
 the pipe.
 
@@ -258,7 +257,7 @@ Pylint.
 
 ### Pyright (type checking)
 
-Pyright runs in **standard** mode targeting Python 3.14.
+Pyright runs in **standard** mode targeting Python 3.11.
 
 ```bash
 pyright
@@ -281,13 +280,14 @@ pytest
    ```
 
 3. The `release.yml` workflow runs automatically, building the wheel and sdist
-   via hatchling and publishing a GitHub Release with assets: `pipes/pipe.py`,
-   `tools/search_tool.py`, `tools/scholar_tool.py`, and
-   `tools/visit_tool.py`.
+   via hatchling and publishing a GitHub Release with assets:
+   `pipes/tongyi_deepresearch_pipe.py`,
+   `tools/deepresearch_search_tool.py`, `tools/deepresearch_scholar_tool.py`,
+   and `tools/deepresearch_visit_tool.py`.
 
 ## Adding a New Tool — Step-by-Step Guide
 
-1. In `DEEPRESEARCH_SYSTEM_PROMPT_TEMPLATE` (top of `pipes/pipe.py`), add a
+1. In `DEEPRESEARCH_SYSTEM_PROMPT_TEMPLATE` (top of `pipes/tongyi_deepresearch_pipe.py`), add a
    new `{"type": "function", "function": {...}}` JSON line inside the
    `<tools>` block, following the exact same format as `search` and `visit`.
 
@@ -296,8 +296,8 @@ pytest
 
 3. If the tool is complex, create
    `src/tongyi_deepresearch_openwebui_pipeline/tools/<your_tool>.py` with a
-   `Tools` class and `Valves(BaseModel)`, mirroring the structure of
-   `tools/visit_tool.py`.
+   `Tools` class and `Valves(BaseModel)`,    mirroring the structure of
+   `tools/deepresearch_visit_tool.py`.
 
 4. Import and instantiate it inside the `if name == "<your_tool>":` branch,
    propagating the API key from `self.valves` as done for `visit_tool`.

@@ -3,10 +3,10 @@ id: tongyi_deepresearch_pipe
 title: Tongyi DeepResearch
 author: starship-s
 author_url: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline
-version: 0.2.6
+version: 0.2.7
 license: MIT
 description: Agentic deep-research pipe for Open WebUI, powered by Tongyi DeepResearch.
-required_open_webui_version: 0.5.0
+required_open_webui_version: 0.8.0
 requirements: httpx
 """
 
@@ -19,6 +19,7 @@ import logging
 import re
 import time
 from collections.abc import (  # noqa: TC003 — runtime needed by Open WebUI
+    AsyncGenerator,
     Awaitable,
     Callable,
 )
@@ -40,6 +41,7 @@ STATUS_PING_INTERVAL_S = 4
 COST_DISPLAY_THRESHOLD = 0.01
 THINK_OPEN_TAG = "<think>\n"
 THINK_CLOSE_TAG = "\n</think>\n"
+TOOL_RESULT_ATTR_MAX_CHARS = 1200
 
 # =========================================================================== #
 #  Tool definitions (injected into the system prompt as JSON)                  #
@@ -378,7 +380,7 @@ class Pipe:
         {
             "id": "deepresearch_search_tool",
             "name": "DeepResearch Search Tool",
-            "module": "search_tool.py",
+            "module": "deepresearch_search_tool.py",
             "description": (
                 "Searches the web via Open WebUI's"
                 " built-in search engine, formatted to"
@@ -390,7 +392,7 @@ class Pipe:
         {
             "id": "deepresearch_scholar_tool",
             "name": "DeepResearch Scholar Tool",
-            "module": "scholar_tool.py",
+            "module": "deepresearch_scholar_tool.py",
             "description": (
                 "Searches academic literature via Open"
                 " WebUI's built-in search with an"
@@ -403,7 +405,7 @@ class Pipe:
         {
             "id": "deepresearch_visit_tool",
             "name": "DeepResearch Visit Tool",
-            "module": "visit_tool.py",
+            "module": "deepresearch_visit_tool.py",
             "description": (
                 "Visits URLs and extracts structured"
                 " evidence via a dedicated extractor"
@@ -537,7 +539,13 @@ class Pipe:
             )
 
     async def _emit_message(self, text: str) -> None:
-        self._message_buffer += text
+        if self._event_emitter:
+            await self._event_emitter(
+                {
+                    "type": "message",
+                    "data": {"content": text},
+                }
+            )
 
     # ================================================================== #
     #  LLM streaming client                                                #
@@ -547,6 +555,8 @@ class Pipe:
         self,
         messages: list,
         max_retries: int = 3,
+        *,
+        emit_thinking_to_emitter: bool | None = None,
     ) -> tuple:
         """Stream a chat completion from the configured API endpoint.
 
@@ -576,7 +586,12 @@ class Pipe:
 
         for attempt in range(max_retries):
             try:
-                return await self._stream_completion(url, headers, payload)
+                return await self._stream_completion(
+                    url,
+                    headers,
+                    payload,
+                    emit_thinking_to_emitter=emit_thinking_to_emitter,
+                )
             except Exception as exc:
                 last_exc = exc
                 if attempt < max_retries - 1:
@@ -615,6 +630,8 @@ class Pipe:
         url: str,
         headers: dict,
         payload: dict,
+        *,
+        emit_thinking_to_emitter: bool | None = None,
     ) -> tuple:
         """Execute the SSE stream and collect the response.
 
@@ -628,7 +645,11 @@ class Pipe:
         content = ""
         usage: dict | None = None
         last_ping = time.time()
-        emit_thinking = self.valves.EMIT_THINKING
+        emit_thinking = (
+            self.valves.EMIT_THINKING
+            if emit_thinking_to_emitter is None
+            else emit_thinking_to_emitter
+        )
         think_state: dict[str, bool] = {"open": False, "closed": False}
 
         async with (
@@ -861,7 +882,7 @@ class Pipe:
 
         Tries four strategies in order:
         1. Package import (pip-installed).
-        2. Direct module import (``visit_tool.py`` on ``sys.path``).
+        2. Direct module import (``deepresearch_visit_tool.py`` on ``sys.path``).
         3. Scan ``sys.modules`` for an Open WebUI-loaded tool module
            (stored as ``tool_{id}``).
         4. Load from the Open WebUI database via
@@ -870,7 +891,7 @@ class Pipe:
         import sys as _sys  # noqa: PLC0415
 
         try:
-            from tongyi_deepresearch_openwebui_pipeline.tools.visit_tool import (  # noqa: PLC0415
+            from tongyi_deepresearch_openwebui_pipeline.tools.deepresearch_visit_tool import (  # noqa: PLC0415, E501
                 Tools,
             )
 
@@ -879,7 +900,7 @@ class Pipe:
             pass
 
         try:
-            from visit_tool import (  # type: ignore[import-not-found]  # noqa: PLC0415
+            from deepresearch_visit_tool import (  # type: ignore[import-not-found]  # noqa: PLC0415
                 Tools,
             )
 
@@ -912,13 +933,13 @@ class Pipe:
         return None
 
     async def _execute_visit_with_tool(self, urls: list[str], goal: str) -> str:
-        """Visit URLs using the standalone visit_tool module."""
+        """Visit URLs using the standalone deepresearch_visit_tool module."""
         VisitTools = self._resolve_visit_tools_class()  # noqa: N806
         if VisitTools is None:
             return (
-                "[visit] visit_tool module not found —"
+                "[visit] deepresearch_visit_tool module not found —"
                 " disable VISIT_ENABLED or install"
-                " visit_tool.py."
+                " deepresearch_visit_tool.py."
             )
 
         visit_tools = VisitTools()
@@ -986,7 +1007,7 @@ class Pipe:
 
         Tries four strategies in order:
         1. Package import (pip-installed).
-        2. Direct module import (``search_tool.py`` on ``sys.path``).
+        2. Direct module import (``deepresearch_search_tool.py`` on ``sys.path``).
         3. Scan ``sys.modules`` for an Open WebUI-loaded tool module
            (stored as ``tool_{id}``).
         4. Load from the Open WebUI database via
@@ -995,7 +1016,7 @@ class Pipe:
         import sys as _sys  # noqa: PLC0415
 
         try:
-            from tongyi_deepresearch_openwebui_pipeline.tools.search_tool import (  # noqa: PLC0415
+            from tongyi_deepresearch_openwebui_pipeline.tools.deepresearch_search_tool import (  # noqa: PLC0415, E501
                 Tools,
             )
 
@@ -1004,7 +1025,7 @@ class Pipe:
             pass
 
         try:
-            from search_tool import (  # type: ignore[import-not-found]  # noqa: PLC0415
+            from deepresearch_search_tool import (  # type: ignore[import-not-found]  # noqa: PLC0415
                 Tools,
             )
 
@@ -1040,10 +1061,13 @@ class Pipe:
         self,
         queries: list[str],
     ) -> str:
-        """Execute search via the standalone search_tool module."""
+        """Execute search via the standalone deepresearch_search_tool module."""
         SearchTools = self._resolve_search_tools_class()  # noqa: N806
         if SearchTools is None:
-            return "[search] search_tool module not found — install search_tool.py."
+            return (
+                "[search] deepresearch_search_tool module not found"
+                " — install deepresearch_search_tool.py."
+            )
 
         search_tools = SearchTools()
         search_tools.request = self._request
@@ -1072,7 +1096,7 @@ class Pipe:
 
         Tries four strategies in order:
         1. Package import (pip-installed).
-        2. Direct module import (``scholar_tool.py`` on ``sys.path``).
+        2. Direct module import (``deepresearch_scholar_tool.py`` on ``sys.path``).
         3. Scan ``sys.modules`` for an Open WebUI-loaded tool module
            (stored as ``tool_{id}``).
         4. Load from the Open WebUI database via
@@ -1081,7 +1105,7 @@ class Pipe:
         import sys as _sys  # noqa: PLC0415
 
         try:
-            from tongyi_deepresearch_openwebui_pipeline.tools.scholar_tool import (  # noqa: PLC0415
+            from tongyi_deepresearch_openwebui_pipeline.tools.deepresearch_scholar_tool import (  # noqa: PLC0415, E501
                 Tools,
             )
 
@@ -1090,7 +1114,7 @@ class Pipe:
             pass
 
         try:
-            from scholar_tool import (  # type: ignore[import-not-found]  # noqa: PLC0415
+            from deepresearch_scholar_tool import (  # type: ignore[import-not-found]  # noqa: PLC0415
                 Tools,
             )
 
@@ -1129,12 +1153,12 @@ class Pipe:
         self,
         queries: list[str],
     ) -> str:
-        """Execute Google Scholar search via the standalone scholar_tool module."""
+        """Execute Google Scholar search via deepresearch_scholar_tool."""
         ScholarTools = self._resolve_scholar_tools_class()  # noqa: N806
         if ScholarTools is None:
             return (
-                "[google_scholar] scholar_tool module not found"
-                " — install scholar_tool.py."
+                "[google_scholar] deepresearch_scholar_tool module not found"
+                " — install deepresearch_scholar_tool.py."
             )
 
         scholar_tools = ScholarTools()
@@ -1183,14 +1207,26 @@ class Pipe:
                     display_result[:max_result_display]
                     + "\n\u2026[truncated for display]"
                 )
-            escaped_result = html.escape(json.dumps(display_result, ensure_ascii=False))
+            legacy_result = display_result
+            if len(legacy_result) > TOOL_RESULT_ATTR_MAX_CHARS:
+                legacy_result = (
+                    legacy_result[:TOOL_RESULT_ATTR_MAX_CHARS]
+                    + "\n\u2026[truncated in result attribute]"
+                )
+            escaped_result_attr = html.escape(
+                json.dumps(legacy_result, ensure_ascii=False)
+            )
+            escaped_result_json = html.escape(
+                json.dumps(display_result, ensure_ascii=False)
+            )
             return (
                 '<details type="tool_calls" done="true" '
                 f'id="{call_id}"'
                 f' name="{html.escape(tool_name)}" '
                 f'arguments="{escaped_args}" '
-                f'result="{escaped_result}">\n'
+                f'result="{escaped_result_attr}">\n'
                 "<summary>Tool Executed</summary>\n"
+                f'<div class="tool-result">{escaped_result_json}</div>\n'
                 "</details>\n"
             )
 
@@ -1213,10 +1249,9 @@ class Pipe:
         __user__: dict | None = None,
         __event_emitter__: (Callable[[dict], Awaitable[None]] | None) = None,
         __request__: object | None = None,
-    ) -> str:
+    ) -> str | AsyncGenerator[str, None]:
         """Entry point called by Open WebUI for every user message."""
         self._store_request_context(__user__, __event_emitter__, __request__)
-        self._message_buffer = ""
 
         error = self._preflight_check()
         if error:
@@ -1225,8 +1260,10 @@ class Pipe:
         messages = self._build_initial_messages(body)
         tracker = _CostTracker()
 
-        answer = await self._run_agentic_loop(messages, tracker)
-        return self._message_buffer + answer
+        if body.get("stream"):
+            return self._pipe_stream(messages, tracker)
+
+        return await self._run_agentic_loop(messages, tracker)
 
     # ---- pipe helpers ------------------------------------------------ #
 
@@ -1329,10 +1366,15 @@ class Pipe:
         messages: list[dict],
         tracker: _CostTracker,
         round_num: int,
+        *,
+        emit_thinking_to_emitter: bool | None = None,
     ) -> tuple | str:
         """Call the model, returning (reasoning, content, full) or an error string."""
         try:
-            reasoning, content, usage = await self._call_llm(messages)
+            reasoning, content, usage = await self._call_llm(
+                messages,
+                emit_thinking_to_emitter=emit_thinking_to_emitter,
+            )
             tracker.update(usage)
         except Exception as exc:
             await self._emit_status(f"API error: {exc}", done=True)
@@ -1402,13 +1444,21 @@ class Pipe:
         )
         return None
 
-    async def _handle_tool_call(
+    @staticmethod
+    def _build_thinking_card(thinking: str) -> str:
+        """Render reasoning as a collapsible block without ``<think>`` tags."""
+        escaped_thinking = html.escape(thinking)
+        return (
+            f"<details>\n<summary>Thought</summary>\n\n{escaped_thinking}\n</details>\n"
+        )
+
+    async def _execute_tool_call_and_append(
         self,
         tc: dict,
         messages: list[dict],
         round_num: int,
-    ) -> None:
-        """Execute a tool call and inject the result into messages."""
+    ) -> str:
+        """Execute tool call, append tool response message, return display card."""
         tool_name = tc.get("name", "unknown")
         tool_args = tc.get("arguments", {})
         if not isinstance(tool_args, dict):
@@ -1421,21 +1471,98 @@ class Pipe:
         except Exception as exc:
             result = f"[Tool Error] {tool_name} failed: {exc}"
 
-        await self._emit_message(
-            self._build_tool_call_card(tool_name, tool_args, result)
-        )
-
         messages.append(
             {
                 "role": "user",
                 "content": (f"<tool_response>\n{result}\n</tool_response>"),
             }
         )
+        return self._build_tool_call_card(tool_name, tool_args, result)
+
+    async def _pipe_stream(  # noqa: C901
+        self,
+        messages: list[dict],
+        tracker: _CostTracker,
+    ) -> AsyncGenerator[str, None]:
+        """Stream reasoning cards, tool cards and final answer as pipe output."""
+        for round_num in range(1, self.valves.MAX_TOOL_ROUNDS + 1):
+            await self._emit_status(f"Round {round_num} \u2014 calling model\u2026")
+            await self._apply_context_guard(messages)
+
+            model_result = await self._call_model_safe(
+                messages,
+                tracker,
+                round_num,
+                emit_thinking_to_emitter=False,
+            )
+            if isinstance(model_result, str):
+                if model_result:
+                    yield model_result
+                yield "data: [DONE]"
+                return
+
+            reasoning, _content, full = model_result
+            messages.append({"role": "assistant", "content": full})
+
+            if self.valves.EMIT_THINKING:
+                thinking = reasoning
+                if not thinking:
+                    thinking = self._extract_thinking(full) or ""
+                if thinking:
+                    yield self._build_thinking_card(thinking)
+
+            tc = self._extract_tool_call(full)
+            if tc:
+                card = await self._execute_tool_call_and_append(tc, messages, round_num)
+                yield card
+                continue
+
+            answer = self._extract_answer(full)
+            if answer:
+                await self._emit_status(
+                    tracker.summary("Research complete \u00b7 "),
+                    done=True,
+                )
+                yield answer
+                yield "data: [DONE]"
+                return
+
+            clean = self._strip_xml_for_display(full)
+            if clean:
+                await self._emit_status(tracker.summary("Done \u00b7 "), done=True)
+                yield clean
+                yield "data: [DONE]"
+                return
+
+            await self._emit_status(
+                f"Round {round_num} \u2014 empty response, retrying\u2026"
+            )
+
+        final_answer = await self._force_final_answer(
+            messages,
+            tracker,
+            emit_thinking_to_emitter=False,
+        )
+        if final_answer:
+            yield final_answer
+        yield "data: [DONE]"
+
+    async def _handle_tool_call(
+        self,
+        tc: dict,
+        messages: list[dict],
+        round_num: int,
+    ) -> None:
+        """Execute a tool call and inject the result into messages."""
+        card = await self._execute_tool_call_and_append(tc, messages, round_num)
+        await self._emit_message(card)
 
     async def _force_final_answer(
         self,
         messages: list[dict],
         tracker: _CostTracker,
+        *,
+        emit_thinking_to_emitter: bool | None = None,
     ) -> str:
         """Force a final answer after the round limit is exhausted."""
         await self._emit_status(
@@ -1455,7 +1582,10 @@ class Pipe:
         )
 
         try:
-            reasoning, content, usage = await self._call_llm(messages)
+            reasoning, content, usage = await self._call_llm(
+                messages,
+                emit_thinking_to_emitter=emit_thinking_to_emitter,
+            )
             tracker.update(usage)
             full = self._reconstruct_full_turn(reasoning, content)
             answer = self._extract_answer(full)

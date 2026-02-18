@@ -1,11 +1,11 @@
 """
-id: deepresearch_scholar_tool
-title: DeepResearch Scholar Tool
+id: deepresearch_search_tool
+title: DeepResearch Search Tool
 author: starship-s
 author_url: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline
-version: 0.1.1
+version: 0.2.7
 license: MIT
-description: Academic literature search via Open WebUI for the DeepResearch pipe.
+description: Web search tool returning raw snippets in DeepResearch training format.
 """
 
 from __future__ import annotations
@@ -17,10 +17,10 @@ from pydantic import BaseModel, Field
 
 
 class Tools:
-    """Scholar searcher returning raw snippets in DeepResearch training format."""
+    """Web searcher returning raw snippets in DeepResearch training format."""
 
     class Valves(BaseModel):
-        """User-configurable settings for the scholar tool."""
+        """User-configurable settings for the search tool."""
 
         MAX_RESULTS_PER_QUERY: int = Field(
             default=10,
@@ -58,11 +58,16 @@ class Tools:
         except Exception as exc:
             return (
                 f"No results found for '{query}'."
-                f" Try with a more general query. ({exc})"
+                " Try with a more general query,"
+                f" or remove the year filter. ({exc})"
             )
 
         if not hits:
-            return f"No results found for '{query}'. Try with a more general query."
+            return (
+                f"No results found for '{query}'."
+                " Try with a more general query,"
+                " or remove the year filter."
+            )
 
         snippets: list[str] = []
         for idx, r in enumerate(hits, 1):
@@ -76,25 +81,24 @@ class Tools:
             snippets.append(entry)
 
         header = (
-            f"A Google scholar for '{query}'"
+            f"A Google search for '{query}'"
             f" found {len(snippets)} results:"
-            "\n\n## Scholar Results\n"
+            "\n\n## Web Results\n"
         )
 
         return header + "\n\n".join(snippets)
 
-    # ---- public tool method ------------------------------------------ #
+    # ---- public tool methods ----------------------------------------- #
 
-    async def google_scholar(
+    async def search(
         self,
         query: list[str],
         __event_emitter__: Callable[[dict], Awaitable[None]] | None = None,
     ) -> str:
-        """Search academic literature via Google Scholar.
+        """Search the web and return raw result snippets.
 
-        Prefixes each query with 'academic research: ' and
-        returns formatted results matching the upstream
-        DeepResearch training format.
+        Returns formatted search results for each query,
+        matching the upstream DeepResearch training format.
         """
 
         async def emit(msg: str, done: bool = False) -> None:
@@ -113,15 +117,14 @@ class Tools:
             query = [query]
 
         query = query[: self.valves.MAX_QUERIES_PER_SEARCH]
-        prefixed = [f"academic research: {q}" for q in query]
 
-        if len(prefixed) == 1:
-            await emit(f"Scholar search: {query[0]}")
-            result = await self._search_single_query(prefixed[0])
+        if len(query) == 1:
+            await emit(f"Searching: {query[0]}")
+            result = await self._search_single_query(query[0])
         else:
-            await emit(f"Scholar searching {len(prefixed)} queries concurrently\u2026")
+            await emit(f"Searching {len(query)} queries concurrently\u2026")
             results = await asyncio.gather(
-                *(self._search_single_query(q) for q in prefixed)
+                *(self._search_single_query(q) for q in query)
             )
             result = "\n=======\n".join(results)
 

@@ -5,7 +5,7 @@
 > OpenAI-compatible API.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Open WebUI ≥ 0.5.0](https://img.shields.io/badge/Open%20WebUI-%E2%89%A5%200.5.0-2ea44f.svg)](https://openwebui.com/)
+[![Open WebUI ≥ 0.8.0](https://img.shields.io/badge/Open%20WebUI-%E2%89%A5%200.8.0-2ea44f.svg)](https://openwebui.com/)
 [![OpenRouter](https://img.shields.io/badge/OpenRouter-supported-6C47FF.svg)](https://openrouter.ai/)
 
 ## Overview
@@ -75,7 +75,7 @@ sequenceDiagram
 
 ### Prerequisites
 
-- Open WebUI ≥ 0.5.0
+- Open WebUI ≥ 0.8.0
 - An [OpenRouter](https://openrouter.ai/) API key (or any OpenAI-compatible
   provider hosting Tongyi DeepResearch)
 
@@ -83,14 +83,14 @@ sequenceDiagram
 
 1. Download the four `.py` files from the latest
    [GitHub Release](https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/releases/latest):
-   - **`pipe.py`** — the pipe (import as a Function)
-   - **`search_tool.py`** — web search tool
-   - **`scholar_tool.py`** — Google Scholar tool
-   - **`visit_tool.py`** — URL visit / extraction tool
+   - **`tongyi_deepresearch_pipe.py`** — the pipe (import as a Function)
+   - **`deepresearch_search_tool.py`** — web search tool
+   - **`deepresearch_scholar_tool.py`** — Google Scholar tool
+   - **`deepresearch_visit_tool.py`** — URL visit / extraction tool
 2. In Open WebUI, go to **Workspace → Functions**, click **Import** (or **+**
-   → **Import**), and import `pipe.py`.
-3. Go to **Workspace → Tools** and import `search_tool.py`,
-   `scholar_tool.py`, and `visit_tool.py`.
+   → **Import**), and import `tongyi_deepresearch_pipe.py`.
+3. Go to **Workspace → Tools** and import `deepresearch_search_tool.py`,
+   `deepresearch_scholar_tool.py`, and `deepresearch_visit_tool.py`.
 4. Open the pipe's **Valves** and set your `API_KEY`.
 5. Enable a Web Search engine in **Admin → Settings → Web Search**.
 6. Start a new chat and select **Tongyi DeepResearch** from the model picker.

@@ -7,19 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.2.6] - 2026-02-18
-
-### Fixed
-
-- Thinking (`<think>`) blocks and tool-call cards (`<details type="tool_calls">`)
-  no longer render as raw text in the chat window. Content is now buffered
-  internally and returned from `pipe()` so Open WebUI processes the tags
-  correctly as collapsible elements.
+## [0.2.7] - 2026-02-18
 
 ### Changed
 
-- System prompt date moved to end of prompt and simplified to `YYYY-MM-DD`
-  format for better model comprehension.
+- **Breaking:** Renamed source files so filenames match their Open WebUI IDs
+  (used when importing directly into Open WebUI):
+  - `pipes/pipe.py` → `pipes/tongyi_deepresearch_pipe.py`
+  - `tools/search_tool.py` → `tools/deepresearch_search_tool.py`
+  - `tools/scholar_tool.py` → `tools/deepresearch_scholar_tool.py`
+  - `tools/visit_tool.py` → `tools/deepresearch_visit_tool.py`
+- Bumped `required_open_webui_version` from 0.5.0 to **0.8.0** (streaming
+  return path requires Open WebUI ≥ 0.8).
+
+### Added
+
+- SSE streaming return path (`_pipe_stream`) — when `stream=True`, reasoning
+  cards and tool-call cards are yielded directly from the pipe return instead
+  of being emitted via `__event_emitter__`, enabling correct rendering of
+  collapsible thinking blocks and tool cards in Open WebUI ≥ 0.8.
+- `_build_thinking_card()` — renders reasoning as collapsible `<details>` blocks.
+- `_execute_tool_call_and_append()` — helper that runs a tool call, appends the
+  `<tool_response>` message, and returns the display card markup.
+- Tool-call cards now include `<div class="tool-result">` for full result
+  content alongside the truncated `result` attribute for backward compatibility.
+
+### Fixed
+
+- `<think>` tags no longer leak into chat output when streaming is active.
+- Tool-call cards now render correctly instead of appearing as raw HTML.
 
 ## [0.2.5] - 2026-02-18
 
@@ -80,8 +96,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Pipe delegates `visit` calls to the standalone tool when `VISIT_TOOL_ENABLED=True`.
 - Project is now installable via `pip install` using hatchling.
 
-[Unreleased]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.6...HEAD
-[0.2.6]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.5...v0.2.6
+[Unreleased]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.7...HEAD
+[0.2.7]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.5...v0.2.7
 [0.2.5]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.4...v0.2.5
 [0.2.4]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.0...v0.2.3
