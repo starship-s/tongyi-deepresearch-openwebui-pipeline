@@ -122,7 +122,7 @@ Browse all releases on the [Releases](https://github.com/starship-s/tongyi-deepr
 | `MAX_TOOL_ROUNDS` | `int` | `30` | Max agentic rounds (1–200) |
 | `SEARCH_RESULTS_PER_QUERY` | `int` | `5` | Results per search query (1–20) |
 | `MAX_QUERIES_PER_SEARCH` | `int` | `5` | Max queries per `search` call (1–10) |
-| `MAX_PAGE_LENGTH` | `int` | `50000` | Max chars kept from a fetched page |
+| `MAX_PAGE_LENGTH` | `int` | `400000` | Max chars kept from a fetched page (~95K tokens) |
 | `SEARCH_ENABLED` | `bool` | `True` | Enable the search tool and include it in the system prompt |
 | `SCHOLAR_ENABLED` | `bool` | `True` | Enable the google_scholar tool and include it in the system prompt |
 | `VISIT_ENABLED` | `bool` | `True` | Enable the visit tool and include it in the system prompt |
@@ -144,5 +144,5 @@ Browse all releases on the [Releases](https://github.com/starship-s/tongyi-deepr
 | `SUMMARY_MODEL_BASE_URL` | `str` | `https://openrouter.ai/api/v1` | OpenAI-compatible base URL |
 | `SUMMARY_MODEL_NAME` | `str` | `qwen/qwen3-30b-a3b-instruct-2507` | Extractor model |
 | `SUMMARY_TEMPERATURE` | `float` | `0.7` | Extractor temperature (0–2) |
-| `MAX_PAGE_TOKENS` | `int` | `120000` | Max chars kept from a fetched page |
+| `MAX_PAGE_CHARS` | `int` | `400000` | Max chars kept from a fetched page (~95K tokens) |
 | `MAX_RETRIES` | `int` | `3` | LLM retry attempts per URL |

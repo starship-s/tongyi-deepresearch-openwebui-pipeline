@@ -181,7 +181,7 @@ The visit tool implements a three-stage pipeline in `Tools._process_url()`:
    `request` is unavailable (standalone usage), falls back to
    `_fetch_and_clean_httpx()` which uses `httpx.AsyncClient` to GET the page,
    strips HTML tags with a regex, runs `html.unescape`, and collapses
-   whitespace. In both paths, content is truncated to `MAX_PAGE_TOKENS`.
+   whitespace. In both paths, content is truncated to `MAX_PAGE_CHARS`.
 
 2. **`_call_extractor(content, goal)`** — Sends `EXTRACTOR_PROMPT` (with
    `{webpage_content}` and `{goal}` placeholders filled in) to the extractor

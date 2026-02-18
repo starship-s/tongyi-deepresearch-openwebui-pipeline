@@ -3,7 +3,7 @@ id: tongyi_deepresearch_pipe
 title: Tongyi DeepResearch
 author: starship-s
 author_url: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline
-version: 0.2.14
+version: 0.2.15
 license: MIT
 description: Agentic deep-research pipe for Open WebUI, powered by Tongyi DeepResearch.
 required_open_webui_version: 0.8.0
@@ -13,6 +13,7 @@ requirements: httpx
 from __future__ import annotations
 
 import asyncio
+import base64
 import html
 import json
 import logging
@@ -37,7 +38,7 @@ logger = logging.getLogger(__name__)
 # =========================================================================== #
 
 # Must stay in sync with docstring metadata (version:) and pyproject.toml.
-_VERSION = "0.2.14"
+_VERSION = "0.2.15"
 
 HTTP_OK = 200
 STATUS_PING_INTERVAL_S = 4
@@ -275,9 +276,9 @@ class Pipe:
             ),
         )
         MAX_PAGE_LENGTH: int = Field(
-            default=50000,
+            default=400_000,
             ge=5000,
-            description=("Maximum characters kept from a fetched page"),
+            description=("Maximum characters kept from a fetched page (~95K tokens)"),
         )
         SEARCH_ENABLED: bool = Field(
             default=True,
@@ -520,6 +521,31 @@ class Pipe:
             return dict(existing_meta.__dict__)
         return dict(existing_meta) if existing_meta else {}
 
+    @staticmethod
+    def _fetch_icon_as_data_url(url: str) -> str | None:
+        """Fetch a PNG over HTTP and return a data: URI, or None on failure."""
+        try:
+            resp = httpx.get(url, timeout=10, follow_redirects=True)
+            if resp.status_code != HTTP_OK:
+                logger.warning(
+                    "Icon fetch returned status %s for %s",
+                    resp.status_code,
+                    url,
+                )
+                return None
+            mime_type = (
+                resp.headers.get("content-type", "image/png").split(";")[0].strip()
+            )
+            encoded = base64.b64encode(resp.content).decode("ascii")
+            return f"data:{mime_type};base64,{encoded}"
+        except Exception:
+            logger.warning(
+                "Could not fetch icon as data URL from %s",
+                url,
+                exc_info=True,
+            )
+            return None
+
     def _auto_install_model_metadata(self) -> None:
         """Create a Model DB entry so Open WebUI displays our icon and description.
 
@@ -537,11 +563,12 @@ class Pipe:
             return
 
         model_id = "tongyi_deepresearch_pipe.tongyi_deepresearch"
-        desired_icon = (
+        _icon_url = (
             "https://raw.githubusercontent.com"
             "/Alibaba-NLP/DeepResearch"
             "/main/assets/tongyi.png"
         )
+        desired_icon = Pipe._fetch_icon_as_data_url(_icon_url) or _icon_url
         desired_description = (
             "Tongyi DeepResearch is an agentic large"
             " language model featuring 30.5 billion"
@@ -1135,7 +1162,7 @@ class Pipe:
         visit_tools.request = self._request
         visit_tools.valves.SUMMARY_MODEL_API_KEY = self.valves.API_KEY
         visit_tools.valves.SUMMARY_MODEL_BASE_URL = self.valves.API_BASE_URL
-        visit_tools.valves.MAX_PAGE_TOKENS = self.valves.MAX_PAGE_LENGTH
+        visit_tools.valves.MAX_PAGE_CHARS = self.valves.MAX_PAGE_LENGTH
 
         pipe_self = self
 

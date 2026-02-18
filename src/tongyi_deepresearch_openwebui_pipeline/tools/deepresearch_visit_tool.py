@@ -3,7 +3,7 @@ id: deepresearch_visit_tool
 title: DeepResearch Visit Tool
 author: starship-s
 author_url: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline
-version: 0.2.7
+version: 0.2.15
 license: MIT
 description: Visits URLs and extracts evidence via a dedicated extractor LLM call.
 requirements: httpx
@@ -54,6 +54,9 @@ EXTRACTOR_PROMPT = (
     " feilds**\n"
 )
 
+# Final truncation fallback after retries (matches upstream tool_visit.py)
+_FINAL_TRUNCATE_CHARS = 25_000
+
 
 class Tools:
     """URL visitor that extracts structured evidence via an extractor LLM."""
@@ -79,9 +82,9 @@ class Tools:
             le=2.0,
             description="Extractor LLM temperature",
         )
-        MAX_PAGE_TOKENS: int = Field(
-            default=120_000,
-            description="Max characters kept from a fetched page",
+        MAX_PAGE_CHARS: int = Field(
+            default=400_000,
+            description="Max characters kept from a fetched page (~95K tokens)",
         )
         MAX_RETRIES: int = Field(
             default=3,
@@ -114,7 +117,7 @@ class Tools:
         else:
             text = await self._fetch_and_clean_httpx(url)
 
-        limit = self.valves.MAX_PAGE_TOKENS
+        limit = self.valves.MAX_PAGE_CHARS
         if len(text) > limit:
             text = text[:limit] + "\n…[content truncated]"
         return text
@@ -196,6 +199,27 @@ class Tools:
                     str(summary),
                 )
             content = content[: int(len(content) * 0.7)]
+
+        # Final fallback: one more attempt with hard truncation (matches upstream)
+        if len(content) > _FINAL_TRUNCATE_CHARS:
+            content = content[:_FINAL_TRUNCATE_CHARS]
+            try:
+                raw_dict = await self._call_extractor(content, goal)
+                evidence = raw_dict.get("evidence")
+                summary = raw_dict.get("summary")
+                if evidence and summary:
+                    return self._fmt_visit_ok(
+                        url,
+                        goal,
+                        str(evidence),
+                        str(summary),
+                    )
+            except (
+                httpx.HTTPError,
+                KeyError,
+                json.JSONDecodeError,
+            ):
+                pass
 
         if last_exc is not None:
             return self._fmt_visit_error(url, goal, str(last_exc))
