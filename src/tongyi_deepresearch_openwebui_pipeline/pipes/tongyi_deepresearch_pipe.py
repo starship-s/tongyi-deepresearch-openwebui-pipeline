@@ -3,7 +3,7 @@ id: tongyi_deepresearch_pipe
 title: Tongyi DeepResearch
 author: starship-s
 author_url: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline
-version: 0.2.7
+version: 0.2.8
 license: MIT
 description: Agentic deep-research pipe for Open WebUI, powered by Tongyi DeepResearch.
 required_open_webui_version: 0.8.0
@@ -352,22 +352,29 @@ class Pipe:
         """Return the list of available pipe definitions."""
         if self.valves.AUTO_INSTALL_TOOLS:
             self._auto_install_tools()
+            self._auto_install_model_metadata()
         return [
             {
                 "id": "tongyi_deepresearch",
                 "name": "Tongyi DeepResearch",
                 "description": (
-                    "Agentic deep-research assistant"
-                    " powered by Alibaba Tongyi"
-                    " DeepResearch. Conducts multi-step"
-                    " web searches and page visits to"
-                    " deliver thorough, cited answers."
+                    "Tongyi DeepResearch is an agentic large"
+                    " language model featuring 30.5 billion"
+                    " total parameters, with only 3.3 billion"
+                    " activated per token. Developed by Tongyi"
+                    " Lab, the model is specifically designed"
+                    " for long-horizon, deep information-seeking"
+                    " tasks. Tongyi DeepResearch demonstrates"
+                    " state-of-the-art performance across a"
+                    " range of agentic search benchmarks,"
+                    " including Humanity's Last Exam, BrowseComp,"
+                    " BrowseComp-ZH, WebWalkerQA,"
+                    " xbench-DeepSearch, FRAMES and SimpleQA."
                 ),
                 "profile_image_url": (
-                    "https://cdn-avatars.huggingface.co"
-                    "/v1/production/uploads"
-                    "/63fc4c00a3c067e62899d32b"
-                    "/dfd_EcIfylvu3sdc2WMqX.png"
+                    "https://raw.githubusercontent.com"
+                    "/Alibaba-NLP/DeepResearch"
+                    "/main/assets/tongyi.png"
                 ),
             }
         ]
@@ -475,6 +482,62 @@ class Pipe:
                 },
             )
             logger.info("Auto-updated tool: %s", tool_id)
+
+    def _auto_install_model_metadata(self) -> None:
+        """Create a Model DB entry so Open WebUI displays our icon and description.
+
+        Open WebUI ignores description and profile_image_url in pipes() return.
+        A Model entry with matching id overlays that metadata onto the pipe model.
+        """
+        try:
+            from open_webui.models.models import (  # type: ignore[import-not-found]  # noqa: PLC0415
+                ModelForm,
+                ModelMeta,
+                ModelParams,
+                Models,
+            )
+        except ImportError:
+            return
+
+        model_id = "tongyi_deepresearch_pipe.tongyi_deepresearch"
+        existing = Models.get_model_by_id(model_id)
+        if existing is not None:
+            return
+
+        meta = ModelMeta(
+            profile_image_url=(
+                "https://raw.githubusercontent.com"
+                "/Alibaba-NLP/DeepResearch"
+                "/main/assets/tongyi.png"
+            ),
+            description=(
+                "Tongyi DeepResearch is an agentic large"
+                " language model featuring 30.5 billion"
+                " total parameters, with only 3.3 billion"
+                " activated per token. Developed by Tongyi"
+                " Lab, the model is specifically designed"
+                " for long-horizon, deep information-seeking"
+                " tasks. Tongyi DeepResearch demonstrates"
+                " state-of-the-art performance across a"
+                " range of agentic search benchmarks,"
+                " including Humanity's Last Exam, BrowseComp,"
+                " BrowseComp-ZH, WebWalkerQA,"
+                " xbench-DeepSearch, FRAMES and SimpleQA."
+            ),
+        )
+        form = ModelForm(
+            id=model_id,
+            base_model_id=None,
+            name="Tongyi DeepResearch",
+            meta=meta,
+            params=ModelParams(),
+            is_active=True,
+            access_grants=[
+                {"principal_type": "user", "principal_id": "*", "permission": "read"},
+            ],
+        )
+        Models.insert_new_model(form_data=form, user_id="")
+        logger.info("Auto-installed model metadata: %s", model_id)
 
     @staticmethod
     def _read_tool_source(module_name: str) -> str | None:
