@@ -37,4 +37,5 @@ jobs:
             dist/*.whl
             dist/*.tar.gz
             tongyi_deepresearch_pipe.py
+            search_tool.py
             visit_tool.py

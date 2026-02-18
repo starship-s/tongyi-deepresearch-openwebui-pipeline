@@ -123,6 +123,25 @@ The visit tool implements a three-stage pipeline in `Tools._process_url()`:
    the upstream DeepResearch visit output convention:
    `"The useful information in {url} for user goal {goal} as follows: …"`.
 
+**Module resolution:** The static method `Pipe._resolve_visit_tools_class()`
+locates the visit tool's `Tools` class using four strategies, tried in order:
+
+1. **Package import** — `from tongyi_deepresearch_openwebui_pipeline.tools.visit_tool import Tools`.
+   Works when the package is pip-installed.
+2. **Direct module import** — `from visit_tool import Tools`. Works when
+   `visit_tool.py` is on `sys.path`.
+3. **`sys.modules` scan** — iterates modules whose name starts with `tool_`
+   (the naming convention Open WebUI uses when it `exec()`s tool code from the
+   database) and picks the first one containing a `Tools` class with a callable
+   `visit` attribute. Zero-config; works when the tool has already been loaded
+   by Open WebUI.
+4. **Open WebUI database load** — uses `open_webui.models.tools.Tools.get_tools()`
+   to find a tool whose source contains `class Tools` and `def visit`, then
+   loads it via `load_tool_module_by_id`.
+
+All four strategies are wrapped in `try`/`except` so the resolver degrades
+gracefully in non-Open-WebUI environments.
+
 **Note:** When `VISIT_TOOL_ENABLED=True`, the pipe's `_execute_tool` method
 automatically propagates `OPENROUTER_API_KEY` into the visit tool's
 `SUMMARY_MODEL_API_KEY` valve, so users only need to configure one API key in

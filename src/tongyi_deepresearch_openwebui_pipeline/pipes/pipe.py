@@ -23,15 +23,15 @@ import json
 import logging
 import re
 import time
+from collections.abc import (  # noqa: TC003 — runtime needed by Open WebUI
+    Awaitable,
+    Callable,
+)
 from datetime import date
-from typing import TYPE_CHECKING
 from uuid import uuid4
 
 import httpx
 from pydantic import BaseModel, Field
-
-if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
 
 logger = logging.getLogger(__name__)
 
@@ -653,23 +653,71 @@ class Pipe:
             return await self._execute_visit_with_tool(urls, goal)
         return await self._execute_visit_builtin(urls, goal)
 
-    async def _execute_visit_with_tool(self, urls: list[str], goal: str) -> str:
-        """Visit URLs using the standalone visit_tool module."""
+    @staticmethod
+    def _resolve_visit_tools_class() -> type | None:
+        """Locate the visit-tool ``Tools`` class across install methods.
+
+        Tries four strategies in order:
+        1. Package import (pip-installed).
+        2. Direct module import (``visit_tool.py`` on ``sys.path``).
+        3. Scan ``sys.modules`` for an Open WebUI-loaded tool module
+           (stored as ``tool_{id}``).
+        4. Load from the Open WebUI database via
+           ``load_tool_module_by_id``.
+        """
+        import sys as _sys  # noqa: PLC0415
+
         try:
             from tongyi_deepresearch_openwebui_pipeline.tools.visit_tool import (  # noqa: PLC0415
-                Tools as VisitTools,
+                Tools,
             )
+
+            return Tools  # type: ignore[no-any-return]
         except ImportError:
-            try:
-                from visit_tool import (  # noqa: PLC0415
-                    Tools as VisitTools,
-                )
-            except ImportError:
-                return (
-                    "[visit] visit_tool module not found —"
-                    " disable VISIT_TOOL_ENABLED or install"
-                    " visit_tool.py."
-                )
+            pass
+
+        try:
+            from visit_tool import (  # type: ignore[import-not-found]  # noqa: PLC0415
+                Tools,
+            )
+
+            return Tools  # type: ignore[no-any-return]
+        except ImportError:
+            pass
+
+        for _name, mod in _sys.modules.items():
+            if not _name.startswith("tool_"):
+                continue
+            cls = getattr(mod, "Tools", None)
+            if cls is not None and callable(getattr(cls, "visit", None)):
+                return cls  # type: ignore[no-any-return]
+
+        try:
+            from open_webui.models.tools import (  # type: ignore[import-not-found]  # noqa: PLC0415
+                Tools as ToolsDB,
+            )
+            from open_webui.utils.plugin import (  # type: ignore[import-not-found]  # noqa: PLC0415
+                load_tool_module_by_id,
+            )
+
+            for tool in ToolsDB.get_tools():
+                if "class Tools" in tool.content and "def visit" in tool.content:
+                    instance, _ = load_tool_module_by_id(tool.id)
+                    return type(instance)
+        except Exception:  # noqa: S110
+            pass
+
+        return None
+
+    async def _execute_visit_with_tool(self, urls: list[str], goal: str) -> str:
+        """Visit URLs using the standalone visit_tool module."""
+        VisitTools = self._resolve_visit_tools_class()  # noqa: N806
+        if VisitTools is None:
+            return (
+                "[visit] visit_tool module not found —"
+                " disable VISIT_TOOL_ENABLED or install"
+                " visit_tool.py."
+            )
 
         visit_tools = VisitTools()
         visit_tools.valves.SUMMARY_MODEL_API_KEY = self.valves.OPENROUTER_API_KEY
@@ -713,10 +761,10 @@ class Pipe:
                     content = content[:max_len] + "\n\u2026[content truncated]"
                 return (
                     f"The useful information in {u} for"
-                    f" user goal {goal} as follows:\n\n"
-                    f"Evidence in page:\n{content}\n\n"
-                    "Summary:\nRaw page content provided"
-                    " above for analysis.\n"
+                    f" user goal {goal} as follows: \n\n"
+                    f"Evidence in page: \n{content}\n\n"
+                    "Summary: \nRaw page content provided"
+                    " above for analysis.\n\n"
                 )
             except Exception as exc:
                 return _fmt_visit_fallback(u, goal, str(exc))
@@ -1126,14 +1174,17 @@ class Pipe:
 # =========================================================================== #
 
 
-def _fmt_visit_fallback(url: str, goal: str, error: str) -> str:
+def _fmt_visit_fallback(url: str, goal: str, _error: str) -> str:
     """Format a visit-tool error in the expected convention."""
     return (
         f"The useful information in {url} for user goal "
-        f"{goal} as follows:\n\n"
-        "Evidence in page:\n"
+        f"{goal} as follows: \n\n"
+        "Evidence in page: \n"
         "The provided webpage content could not be"
-        f" accessed. Error: {error}\n\n"
-        "Summary:\n"
-        "The webpage content could not be processed.\n"
+        " accessed. Please check the URL or file"
+        " format.\n\n"
+        "Summary: \n"
+        "The webpage content could not be processed,"
+        " and therefore, no information is"
+        " available.\n\n"
     )

@@ -3,8 +3,6 @@
 > Agentic deep-research pipe that bridges Tongyi DeepResearch
 > (alibaba/tongyi-deepresearch-30b-a3b via OpenRouter) with Open WebUI.
 
-[![CI](https://github.com/<org>/tongyi-deepresearch-openwebui-pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/<org>/tongyi-deepresearch-openwebui-pipeline/actions/workflows/ci.yml)
-[![Release](https://github.com/<org>/tongyi-deepresearch-openwebui-pipeline/actions/workflows/release.yml/badge.svg)](https://github.com/<org>/tongyi-deepresearch-openwebui-pipeline/actions/workflows/release.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python ≥ 3.14](https://img.shields.io/badge/Python-%E2%89%A5%203.14-3776AB.svg)](https://www.python.org/)
 [![Open WebUI ≥ 0.4.0](https://img.shields.io/badge/Open%20WebUI-%E2%89%A5%200.4.0-2ea44f.svg)](https://openwebui.com/)
@@ -150,7 +148,7 @@ page.
 |---|---|---|---|
 | `SUMMARY_MODEL_API_KEY` | `str` | `""` | API key for the extractor LLM |
 | `SUMMARY_MODEL_BASE_URL` | `str` | `https://openrouter.ai/api/v1` | OpenAI-compatible base URL |
-| `SUMMARY_MODEL_NAME` | `str` | `qwen/qwen-2.5-72b-instruct` | Extractor model |
+| `SUMMARY_MODEL_NAME` | `str` | `qwen/qwen3-30b-a3b-instruct-2507` | Extractor model |
 | `SUMMARY_TEMPERATURE` | `float` | `0.7` | Extractor temperature (0–2) |
 | `MAX_PAGE_TOKENS` | `int` | `120000` | Max chars kept from a fetched page |
 | `MAX_RETRIES` | `int` | `3` | LLM retry attempts per URL |

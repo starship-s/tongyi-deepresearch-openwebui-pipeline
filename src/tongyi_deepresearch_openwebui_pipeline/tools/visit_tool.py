@@ -17,13 +17,10 @@ import asyncio
 import html
 import json
 import re
-from typing import TYPE_CHECKING
+from collections.abc import Awaitable, Callable  # noqa: TC003
 
 import httpx
 from pydantic import BaseModel, Field
-
-if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
 
 EXTRACTOR_PROMPT = (
     "Please process the following webpage content"
@@ -75,7 +72,7 @@ class Tools:
             description="OpenAI-compatible base URL",
         )
         SUMMARY_MODEL_NAME: str = Field(
-            default="qwen/qwen-2.5-72b-instruct",
+            default="qwen/qwen3-30b-a3b-instruct-2507",
             description="Model used for extraction",
         )
         SUMMARY_TEMPERATURE: float = Field(
@@ -195,21 +192,24 @@ class Tools:
     def _fmt_visit_ok(url: str, goal: str, evidence: str, summary: str) -> str:
         return (
             f"The useful information in {url} for user goal "
-            f"{goal} as follows:\n\n"
-            f"Evidence in page:\n{evidence}\n\n"
-            f"Summary:\n{summary}\n\n"
+            f"{goal} as follows: \n\n"
+            f"Evidence in page: \n{evidence}\n\n"
+            f"Summary: \n{summary}\n\n"
         )
 
     @staticmethod
-    def _fmt_visit_error(url: str, goal: str, error: str) -> str:
+    def _fmt_visit_error(url: str, goal: str, _error: str) -> str:
         return (
             f"The useful information in {url} for user goal "
-            f"{goal} as follows:\n\n"
-            f"Evidence in page:\n"
-            f"The provided webpage content could not be"
-            f" accessed. Error: {error}\n\n"
-            f"Summary:\n"
-            f"The webpage content could not be processed.\n"
+            f"{goal} as follows: \n\n"
+            f"Evidence in page: \n"
+            "The provided webpage content could not be"
+            " accessed. Please check the URL or file"
+            " format.\n\n"
+            f"Summary: \n"
+            "The webpage content could not be processed,"
+            " and therefore, no information is"
+            " available.\n\n"
         )
 
     # ---- public tool method ------------------------------------------ #
@@ -260,4 +260,4 @@ class Tools:
             result = "\n=======\n".join(results)
 
         await emit("Done.", done=True)
-        return result
+        return result.strip()
