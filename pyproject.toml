@@ -34,7 +34,7 @@ packages = ["src/tongyi_deepresearch_openwebui_pipeline"]
 # Pyright
 # ---------------------------------------------------------------------------
 [tool.pyright]
-pythonVersion = "3.14"
+pythonVersion = "3.11"
 include = ["src"]
 exclude = [
   "**/node_modules",
@@ -51,7 +51,7 @@ reportMissingTypeStubs = false
 # Ruff
 # ---------------------------------------------------------------------------
 [tool.ruff]
-target-version = "py314"
+target-version = "py311"
 line-length = 88
 output-format = "concise"
 
