@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.10] - 2026-02-18
+
+### Fixed
+
+- `_auto_install_model_metadata()` now correctly stores icon and description in Open
+  WebUI's model database. Replaced invalid `access_grants` with `access_control=None`,
+  added broad exception handling around form construction and DB writes, and replaced
+  the create-once guard with an update-if-different check so previously broken entries
+  are repaired and future icon/description changes are applied.
+
 ## [0.2.9] - 2026-02-18
 
 ### Fixed
@@ -122,7 +132,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Pipe delegates `visit` calls to the standalone tool when `VISIT_TOOL_ENABLED=True`.
 - Project is now installable via `pip install` using hatchling.
 
-[Unreleased]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.9...HEAD
+[Unreleased]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.10...HEAD
+[0.2.10]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.9...v0.2.10
 [0.2.9]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.8...v0.2.9
 [0.2.8]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.7...v0.2.8
 [0.2.7]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.5...v0.2.7

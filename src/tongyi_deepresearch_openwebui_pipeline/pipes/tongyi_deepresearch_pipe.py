@@ -3,7 +3,7 @@ id: tongyi_deepresearch_pipe
 title: Tongyi DeepResearch
 author: starship-s
 author_url: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline
-version: 0.2.9
+version: 0.2.10
 license: MIT
 description: Agentic deep-research pipe for Open WebUI, powered by Tongyi DeepResearch.
 required_open_webui_version: 0.8.0
@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 # =========================================================================== #
 
 # Must stay in sync with docstring metadata (version:) and pyproject.toml.
-_VERSION = "0.2.9"
+_VERSION = "0.2.10"
 
 HTTP_OK = 200
 STATUS_PING_INTERVAL_S = 4
@@ -493,6 +493,21 @@ class Pipe:
             )
             logger.info("Auto-updated tool: %s", tool_id)
 
+    @staticmethod
+    def _clone_meta_from_existing(existing: object) -> dict:
+        """Clone meta from an existing model using model_dump/dict/__dict__ fallback."""
+        meta_dict: dict = {}
+        existing_meta = getattr(existing, "meta", None)
+        if existing_meta is None:
+            return meta_dict
+        if hasattr(existing_meta, "model_dump"):
+            return dict(existing_meta.model_dump())
+        if hasattr(existing_meta, "dict"):
+            return dict(existing_meta.dict())
+        if hasattr(existing_meta, "__dict__"):
+            return dict(existing_meta.__dict__)
+        return dict(existing_meta) if existing_meta else {}
+
     def _auto_install_model_metadata(self) -> None:
         """Create a Model DB entry so Open WebUI displays our icon and description.
 
@@ -510,44 +525,93 @@ class Pipe:
             return
 
         model_id = "tongyi_deepresearch_pipe.tongyi_deepresearch"
+        desired_icon = (
+            "https://raw.githubusercontent.com"
+            "/Alibaba-NLP/DeepResearch"
+            "/main/assets/tongyi.png"
+        )
+        desired_description = (
+            "Tongyi DeepResearch is an agentic large"
+            " language model featuring 30.5 billion"
+            " total parameters, with only 3.3 billion"
+            " activated per token. Developed by Tongyi"
+            " Lab, the model is specifically designed"
+            " for long-horizon, deep information-seeking"
+            " tasks. Tongyi DeepResearch demonstrates"
+            " state-of-the-art performance across a"
+            " range of agentic search benchmarks,"
+            " including Humanity's Last Exam, BrowseComp,"
+            " BrowseComp-ZH, WebWalkerQA,"
+            " xbench-DeepSearch, FRAMES and SimpleQA."
+        )
+
         existing = Models.get_model_by_id(model_id)
-        if existing is not None:
+
+        if existing is None:
+            try:
+                meta = ModelMeta(
+                    profile_image_url=desired_icon,
+                    description=desired_description,
+                )
+            except Exception:
+                meta = {
+                    "profile_image_url": desired_icon,
+                    "description": desired_description,
+                }
+            try:
+                form = ModelForm(
+                    id=model_id,
+                    base_model_id=None,
+                    name="Tongyi DeepResearch",
+                    meta=meta,
+                    params=ModelParams(),
+                    is_active=True,
+                    access_control=None,
+                )
+                Models.insert_new_model(form_data=form, user_id="")
+                logger.info("Auto-installed model metadata: %s", model_id)
+            except Exception:
+                logger.debug(
+                    "Could not auto-install model metadata for %s",
+                    model_id,
+                    exc_info=True,
+                )
             return
 
-        meta = ModelMeta(
-            profile_image_url=(
-                "https://raw.githubusercontent.com"
-                "/Alibaba-NLP/DeepResearch"
-                "/main/assets/tongyi.png"
-            ),
-            description=(
-                "Tongyi DeepResearch is an agentic large"
-                " language model featuring 30.5 billion"
-                " total parameters, with only 3.3 billion"
-                " activated per token. Developed by Tongyi"
-                " Lab, the model is specifically designed"
-                " for long-horizon, deep information-seeking"
-                " tasks. Tongyi DeepResearch demonstrates"
-                " state-of-the-art performance across a"
-                " range of agentic search benchmarks,"
-                " including Humanity's Last Exam, BrowseComp,"
-                " BrowseComp-ZH, WebWalkerQA,"
-                " xbench-DeepSearch, FRAMES and SimpleQA."
-            ),
-        )
-        form = ModelForm(
-            id=model_id,
-            base_model_id=None,
-            name="Tongyi DeepResearch",
-            meta=meta,
-            params=ModelParams(),
-            is_active=True,
-            access_grants=[
-                {"principal_type": "user", "principal_id": "*", "permission": "read"},
-            ],
-        )
-        Models.insert_new_model(form_data=form, user_id="")
-        logger.info("Auto-installed model metadata: %s", model_id)
+        # Update existing entry if icon or description differ
+        meta_dict = Pipe._clone_meta_from_existing(existing)
+
+        icon_match = meta_dict.get("profile_image_url") == desired_icon
+        desc_match = meta_dict.get("description") == desired_description
+        if icon_match and desc_match:
+            return
+
+        meta_dict["profile_image_url"] = desired_icon
+        meta_dict["description"] = desired_description
+
+        try:
+            meta_obj = ModelMeta(**meta_dict)
+        except Exception:
+            meta_obj = meta_dict
+
+        try:
+            payload = ModelForm(
+                id=existing.id,
+                base_model_id=getattr(existing, "base_model_id", None),
+                name=getattr(existing, "name", "Tongyi DeepResearch"),
+                meta=meta_obj,
+                params=getattr(existing, "params", None) or ModelParams(),
+                access_control=getattr(existing, "access_control", None),
+                is_active=getattr(existing, "is_active", True),
+            )
+            Models.update_model_by_id(model_id, payload)
+            logger.info("Auto-updated model metadata: %s", model_id)
+        except Exception:
+            logger.debug(
+                "Could not auto-update model metadata for %s",
+                model_id,
+                exc_info=True,
+            )
 
     @staticmethod
     def _read_tool_source(module_name: str) -> str | None:
@@ -1033,6 +1097,7 @@ class Pipe:
             )
 
         visit_tools = VisitTools()
+        visit_tools.request = self._request
         visit_tools.valves.SUMMARY_MODEL_API_KEY = self.valves.API_KEY
         visit_tools.valves.SUMMARY_MODEL_BASE_URL = self.valves.API_BASE_URL
         visit_tools.valves.MAX_PAGE_TOKENS = self.valves.MAX_PAGE_LENGTH
