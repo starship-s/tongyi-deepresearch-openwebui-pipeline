@@ -23,9 +23,11 @@ src/tongyi_deepresearch_openwebui_pipeline/   ← the real package
 ├── pipes/
 │   └── pipe.py                               ← main pipe implementation
 └── tools/
+    ├── search_tool.py                        ← search tool (raw snippets)
     └── visit_tool.py                         ← visit/extraction tool
 
 tongyi_deepresearch_pipe.py                   ← shim: re-exports Pipe
+search_tool.py                                ← shim: re-exports Tools
 visit_tool.py                                 ← shim: re-exports Tools
 ```
 
@@ -97,11 +99,39 @@ respected by any new tool handler.
 
 | Tool | Handler | Notes |
 |---|---|---|
-| `search` | `_execute_search()` → Open WebUI `search_web()` | Accepts array of queries; runs concurrently up to `MAX_QUERIES_PER_SEARCH` |
+| `search` | `search_tool.Tools.search()` | Returns raw snippets matching upstream training format via Open WebUI `search_web()` |
 | `visit` | `visit_tool.Tools.visit()` or built-in `get_content_from_url()` | Controlled by `VISIT_TOOL_ENABLED` valve |
-| `google_scholar` | `_execute_search()` with `"academic research: "` prefix | Reuses the same search backend |
+| `google_scholar` | `search_tool.Tools.google_scholar()` | Prefixes queries with `"academic research: "` and uses scholar-specific header |
 | `PythonInterpreter` | Graceful error string | Not executable in this environment |
 | `parse_file` | Graceful error string | Not executable in this environment |
+
+## Search Tool Deep-Dive (`src/tongyi_deepresearch_openwebui_pipeline/tools/search_tool.py`)
+
+The search tool returns **raw search snippets** with no LLM post-processing,
+matching the output format the model was trained on in the upstream DeepResearch
+repository (`tool_search.py`).
+
+**Output format (per query):**
+
+```
+A Google search for '{query}' found {N} results:
+
+## Web Results
+1. [Title](link)
+snippet text
+
+2. [Title](link)
+snippet text
+```
+
+Multiple queries are separated by `\n=======\n`. Google Scholar results use the
+header `A Google scholar for '{query}' found {N} results:` with
+`## Scholar Results`.
+
+The tool delegates to Open WebUI's built-in `search_web()` for the actual HTTP
+requests. The pipe passes `request` and `user` objects so the tool can call
+`search_web` without needing its own API credentials. The pipe imports the
+search tool directly from the package — there is no fallback path.
 
 ## Visit Tool Deep-Dive (`src/tongyi_deepresearch_openwebui_pipeline/tools/visit_tool.py`)
 
@@ -145,7 +175,8 @@ gracefully in non-Open-WebUI environments.
 **Note:** When `VISIT_TOOL_ENABLED=True`, the pipe's `_execute_tool` method
 automatically propagates `OPENROUTER_API_KEY` into the visit tool's
 `SUMMARY_MODEL_API_KEY` valve, so users only need to configure one API key in
-most setups.
+most setups. The search tool does not require an API key — it uses Open WebUI's
+built-in `search_web()` via the `request`/`user` context passed by the pipe.
 
 ## Development Workflow
 

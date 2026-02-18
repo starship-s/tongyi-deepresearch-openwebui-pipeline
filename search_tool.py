@@ -2,12 +2,12 @@
 
 title: DeepResearch Search Tool
 author: starship-s
-version: 0.1.0
+version: 0.2.0
 license: MIT
 description: >
-    Searches the web and extracts structured evidence via a
-    dedicated extractor LLM call.
-requirements: duckduckgo-search, httpx
+    Searches the web via Open WebUI's built-in search engine and
+    returns raw result snippets formatted to match the upstream
+    DeepResearch training format.
 """
 
 import sys
