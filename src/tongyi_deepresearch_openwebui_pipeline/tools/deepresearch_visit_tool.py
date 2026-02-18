@@ -91,10 +91,36 @@ class Tools:
     def __init__(self) -> None:
         """Initialise valves with defaults."""
         self.valves = self.Valves()
+        self.request: object | None = None
 
     # ---- private helpers --------------------------------------------- #
 
     async def _fetch_and_clean(self, url: str) -> str:
+        """Fetch page content via Open WebUI's web loader or httpx fallback."""
+        if self.request is not None:
+            try:
+                from open_webui.retrieval.utils import (  # type: ignore[import-not-found]  # noqa: PLC0415
+                    get_content_from_url,
+                )
+
+                content, _docs = await asyncio.to_thread(
+                    get_content_from_url,
+                    self.request,
+                    url,
+                )
+                text = content if isinstance(content, str) else ""
+            except Exception:
+                text = await self._fetch_and_clean_httpx(url)
+        else:
+            text = await self._fetch_and_clean_httpx(url)
+
+        limit = self.valves.MAX_PAGE_TOKENS
+        if len(text) > limit:
+            text = text[:limit] + "\n…[content truncated]"
+        return text
+
+    async def _fetch_and_clean_httpx(self, url: str) -> str:
+        """Fallback: fetch via httpx when Open WebUI request context is unavailable."""
         async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
             resp = await client.get(url)
             resp.raise_for_status()
@@ -102,12 +128,7 @@ class Tools:
 
         text = re.sub(r"<[^>]+>", " ", raw)
         text = html.unescape(text)
-        text = re.sub(r"\s{2,}", " ", text).strip()
-
-        limit = self.valves.MAX_PAGE_TOKENS
-        if len(text) > limit:
-            text = text[:limit] + "\n…[content truncated]"
-        return text
+        return re.sub(r"\s{2,}", " ", text).strip()
 
     async def _call_extractor(self, content: str, goal: str) -> dict:
         prompt = EXTRACTOR_PROMPT.format(webpage_content=content, goal=goal)

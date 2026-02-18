@@ -174,9 +174,14 @@ sent to Open WebUI's `search_web()`. Multiple queries are separated by
 
 The visit tool implements a three-stage pipeline in `Tools._process_url()`:
 
-1. **`_fetch_and_clean(url)`** — Uses `httpx.AsyncClient` to GET the page,
-   strips HTML tags with a regex, runs `html.unescape`, collapses whitespace,
-   and truncates to `MAX_PAGE_TOKENS` characters.
+1. **`_fetch_and_clean(url)`** — When `self.request` is set (passed by the pipe),
+   delegates to Open WebUI's built-in `get_content_from_url(request, url)` via
+   `asyncio.to_thread`, which uses the user's configured web loader engine
+   (safe_web, playwright, firecrawl, tavily, external, or YouTube). When
+   `request` is unavailable (standalone usage), falls back to
+   `_fetch_and_clean_httpx()` which uses `httpx.AsyncClient` to GET the page,
+   strips HTML tags with a regex, runs `html.unescape`, and collapses
+   whitespace. In both paths, content is truncated to `MAX_PAGE_TOKENS`.
 
 2. **`_call_extractor(content, goal)`** — Sends `EXTRACTOR_PROMPT` (with
    `{webpage_content}` and `{goal}` placeholders filled in) to the extractor
@@ -210,11 +215,13 @@ All four strategies are wrapped in `try`/`except` so the resolver degrades
 gracefully in non-Open-WebUI environments.
 
 **Note:** When `VISIT_ENABLED=True`, the pipe's `_execute_visit` method
-automatically propagates `API_KEY` into the visit tool's
-`SUMMARY_MODEL_API_KEY` valve, so users only need to configure one API key in
-most setups.  The search and scholar tools do not require an API key — they use
-Open WebUI's built-in `search_web()` via the `request`/`user` context passed by
-the pipe.
+passes `request` to the visit tool (like the search and scholar tools) and
+propagates `API_KEY` into the visit tool's `SUMMARY_MODEL_API_KEY` valve, so
+users only need to configure one API key in most setups. The visit tool uses
+Open WebUI's built-in `get_content_from_url()` for page fetching when
+`request` is available, respecting the user's configured web loader engine. The
+search and scholar tools do not require an API key — they use Open WebUI's
+built-in `search_web()` via the `request`/`user` context passed by the pipe.
 
 ## Dynamic Tools and Auto-Install
 

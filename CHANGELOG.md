@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.11] - 2026-02-18
+
+### Changed
+
+- Visit tool now uses Open WebUI's built-in `get_content_from_url()` when the pipe
+  passes the request context, respecting the user's configured web loader engine
+  (safe_web, playwright, firecrawl, tavily, external, or YouTube). Falls back to
+  httpx when the request is unavailable (standalone tool usage).
+
 ## [0.2.10] - 2026-02-18
 
 ### Fixed
@@ -132,7 +141,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Pipe delegates `visit` calls to the standalone tool when `VISIT_TOOL_ENABLED=True`.
 - Project is now installable via `pip install` using hatchling.
 
-[Unreleased]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.10...HEAD
+[Unreleased]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.11...HEAD
+[0.2.11]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.10...v0.2.11
 [0.2.10]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.9...v0.2.10
 [0.2.9]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.8...v0.2.9
 [0.2.8]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.7...v0.2.8
