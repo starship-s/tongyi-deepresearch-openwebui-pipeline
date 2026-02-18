@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.16] - 2026-02-18
+
+### Fixed
+
+- ReAct loop now aligns with the official DeepResearch reference implementation:
+  - Added `stop` sequences (`\n<tool_response>`, `<tool_response>`) to prevent the
+    model from hallucinating tool responses.
+  - Strip any `<tool_response>` content from model output before appending to
+    messages (safety net if stop sequences are ignored).
+  - Context guard now terminates the loop after one more LLM call instead of
+    continuing to loop and potentially overshooting the context limit.
+  - Context guard overwrites the last message with the wrap-up instruction when
+    possible (reclaiming space) instead of always appending.
+
 ## [0.2.15] - 2026-02-18
 
 ### Fixed
@@ -180,7 +194,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Pipe delegates `visit` calls to the standalone tool when `VISIT_TOOL_ENABLED=True`.
 - Project is now installable via `pip install` using hatchling.
 
-[Unreleased]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.15...HEAD
+[Unreleased]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.16...HEAD
+[0.2.16]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.15...v0.2.16
 [0.2.15]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.14...v0.2.15
 [0.2.14]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.13...v0.2.14
 [0.2.13]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.12...v0.2.13

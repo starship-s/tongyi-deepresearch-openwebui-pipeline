@@ -3,7 +3,7 @@ id: tongyi_deepresearch_pipe
 title: Tongyi DeepResearch
 author: starship-s
 author_url: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline
-version: 0.2.15
+version: 0.2.16
 license: MIT
 description: Agentic deep-research pipe for Open WebUI, powered by Tongyi DeepResearch.
 required_open_webui_version: 0.8.0
@@ -38,10 +38,11 @@ logger = logging.getLogger(__name__)
 # =========================================================================== #
 
 # Must stay in sync with docstring metadata (version:) and pyproject.toml.
-_VERSION = "0.2.15"
+_VERSION = "0.2.16"
 
 HTTP_OK = 200
 STATUS_PING_INTERVAL_S = 4
+_MIN_MESSAGES_FOR_CONTEXT_OVERWRITE = 3
 COST_DISPLAY_THRESHOLD = 0.01
 THINK_OPEN_TAG = "<think>\n"
 THINK_CLOSE_TAG = "\n</think>\n"
@@ -783,6 +784,7 @@ class Pipe:
             "top_p": self.valves.TOP_P,
             "presence_penalty": self.valves.PRESENCE_PENALTY,
             "max_tokens": self.valves.MAX_TOKENS,
+            "stop": ["\n<tool_response>", "<tool_response>"],
         }
 
         last_exc: Exception | None = None
@@ -1027,6 +1029,18 @@ class Pipe:
         if reasoning and "<think>" not in content:
             return f"<think>\n{reasoning}\n</think>\n{content}"
         return content
+
+    @staticmethod
+    def _strip_tool_response_from_output(text: str) -> str:
+        """Remove hallucinated <tool_response> content from model output.
+
+        Matches official DeepResearch behavior: the model must not generate
+        tool responses; we strip any that leak through before appending.
+        """
+        if "<tool_response>" in text:
+            pos = text.find("<tool_response>")
+            text = text[:pos]
+        return text.strip()
 
     # ================================================================== #
     #  Tool router                                                         #
@@ -1565,13 +1579,17 @@ class Pipe:
         """Run the multi-turn ReAct loop until an answer is produced."""
         for round_num in range(1, self.valves.MAX_TOOL_ROUNDS + 1):
             await self._emit_status(f"Round {round_num} \u2014 calling model\u2026")
-            await self._apply_context_guard(messages)
+            if await self._apply_context_guard(messages):
+                return await self._force_final_answer(
+                    messages, tracker, skip_append=True
+                )
 
             model_result = await self._call_model_safe(messages, tracker, round_num)
             if isinstance(model_result, str):
                 return model_result
 
             reasoning, _content, full = model_result
+            full = self._strip_tool_response_from_output(full)
             messages.append({"role": "assistant", "content": full})
 
             if self.valves.EMIT_THINKING and not reasoning:
@@ -1612,28 +1630,42 @@ class Pipe:
         full = self._reconstruct_full_turn(reasoning, content)
         return reasoning, content, full
 
-    async def _apply_context_guard(self, messages: list[dict]) -> None:
-        """Inject a wrap-up request when the context budget is nearly exhausted."""
+    _CONTEXT_LIMIT_WRAP_UP = (
+        "You have now reached the maximum"
+        " context length you can handle."
+        " Stop making tool calls and,"
+        " based on all the information"
+        " above, think again and provide"
+        " what you consider the most"
+        " likely answer within"
+        " <answer></answer> tags."
+    )
+
+    async def _apply_context_guard(self, messages: list[dict]) -> bool:
+        """Inject a wrap-up request when the context budget is nearly exhausted.
+
+        When triggered, overwrites the last message (to reclaim space) or
+        appends if there are only system+user messages. Returns True when
+        the caller should exit after one more LLM call.
+        """
         total_chars = sum(len(m.get("content", "")) for m in messages)
-        if total_chars > self.valves.MAX_CONTEXT_CHARS:
-            await self._emit_status(
-                "Context limit approaching \u2014 requesting final answer\u2026"
-            )
+        if total_chars <= self.valves.MAX_CONTEXT_CHARS:
+            return False
+
+        await self._emit_status(
+            "Context limit approaching \u2014 requesting final answer\u2026"
+        )
+
+        if len(messages) >= _MIN_MESSAGES_FOR_CONTEXT_OVERWRITE:
+            messages[-1]["content"] = self._CONTEXT_LIMIT_WRAP_UP
+        else:
             messages.append(
                 {
                     "role": "user",
-                    "content": (
-                        "You have now reached the maximum"
-                        " context length you can handle."
-                        " Stop making tool calls and,"
-                        " based on all the information"
-                        " above, think again and provide"
-                        " what you consider the most"
-                        " likely answer within"
-                        " <answer></answer> tags."
-                    ),
+                    "content": self._CONTEXT_LIMIT_WRAP_UP,
                 }
             )
+        return True
 
     async def _process_round(
         self,
@@ -1710,7 +1742,17 @@ class Pipe:
         """Stream reasoning cards, tool cards and final answer as pipe output."""
         for round_num in range(1, self.valves.MAX_TOOL_ROUNDS + 1):
             await self._emit_status(f"Round {round_num} \u2014 calling model\u2026")
-            await self._apply_context_guard(messages)
+            if await self._apply_context_guard(messages):
+                final_answer = await self._force_final_answer(
+                    messages,
+                    tracker,
+                    emit_thinking_to_emitter=False,
+                    skip_append=True,
+                )
+                if final_answer:
+                    yield final_answer
+                yield "data: [DONE]"
+                return
 
             model_result = await self._call_model_safe(
                 messages,
@@ -1725,6 +1767,7 @@ class Pipe:
                 return
 
             reasoning, _content, full = model_result
+            full = self._strip_tool_response_from_output(full)
             messages.append({"role": "assistant", "content": full})
 
             if self.valves.EMIT_THINKING:
@@ -1786,23 +1829,26 @@ class Pipe:
         tracker: _CostTracker,
         *,
         emit_thinking_to_emitter: bool | None = None,
+        skip_append: bool = False,
     ) -> str:
-        """Force a final answer after the round limit is exhausted."""
-        await self._emit_status(
-            "Maximum research rounds reached \u2014 forcing final answer\u2026"
-        )
-
-        messages.append(
-            {
-                "role": "user",
-                "content": (
-                    "You have used all available research"
-                    " rounds. Based on everything gathered"
-                    " above, provide your best answer now"
-                    " within <answer></answer> tags."
-                ),
-            }
-        )
+        """Force a final answer after the round limit or context limit."""
+        if skip_append:
+            pass
+        else:
+            await self._emit_status(
+                "Maximum research rounds reached \u2014 forcing final answer\u2026"
+            )
+            messages.append(
+                {
+                    "role": "user",
+                    "content": (
+                        "You have used all available research"
+                        " rounds. Based on everything gathered"
+                        " above, provide your best answer now"
+                        " within <answer></answer> tags."
+                    ),
+                }
+            )
 
         try:
             reasoning, content, usage = await self._call_llm(
