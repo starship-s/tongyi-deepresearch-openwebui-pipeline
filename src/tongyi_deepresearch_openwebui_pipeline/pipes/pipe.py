@@ -1,16 +1,18 @@
 """Tongyi DeepResearch pipe for Open WebUI.
 
+id: tongyi-deepresearch
 title: Tongyi DeepResearch
 author: starship-s
+author_url: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline
 version: 0.2.0
 license: MIT
 description: >
-    Agentic deep-research pipe that bridges Tongyi DeepResearch
-    (alibaba/tongyi-deepresearch-30b-a3b via OpenRouter) with
-    Open WebUI.  Translates the model's XML-structured tool_call
-    blocks into real web searches and URL fetches using Open
-    WebUI's built-in web search and content loader, then feeds
-    results back until the model produces a final answer.
+    Agentic deep-research pipe that uses Tongyi DeepResearch
+    (alibaba/tongyi-deepresearch-30b-a3b) via any OpenAI-compatible
+    API.  Translates the model's XML-structured tool_call blocks
+    into real web searches and URL fetches using Open WebUI's
+    built-in web search and content loader, then feeds results
+    back until the model produces a final answer.
 required_open_webui_version: 0.4.0
 requirements: httpx
 """
@@ -236,17 +238,17 @@ class Pipe:
     class Valves(BaseModel):
         """User-configurable settings shown in the Admin UI."""
 
-        OPENROUTER_API_KEY: str = Field(
+        API_KEY: str = Field(
             default="",
-            description="OpenRouter API key",
+            description="API key for the OpenAI-compatible endpoint",
         )
-        OPENROUTER_BASE_URL: str = Field(
+        API_BASE_URL: str = Field(
             default="https://openrouter.ai/api/v1",
-            description="OpenRouter-compatible API base URL",
+            description="OpenAI-compatible API base URL",
         )
         MODEL_ID: str = Field(
             default="alibaba/tongyi-deepresearch-30b-a3b",
-            description="Model identifier on OpenRouter",
+            description="Model identifier on the API provider",
         )
         MAX_TOOL_ROUNDS: int = Field(
             default=30,
@@ -545,24 +547,24 @@ class Pipe:
             )
 
     # ================================================================== #
-    #  OpenRouter streaming client                                         #
+    #  LLM streaming client                                                #
     # ================================================================== #
 
-    async def _call_openrouter(
+    async def _call_llm(
         self,
         messages: list,
         max_retries: int = 3,
     ) -> tuple:
-        """Stream a chat completion from OpenRouter.
+        """Stream a chat completion from the configured API endpoint.
 
         Returns:
             Tuple of (reasoning_text, content_text,
             usage_dict). *usage_dict* may be ``None``
             if the provider did not report usage.
         """
-        url = f"{self.valves.OPENROUTER_BASE_URL.rstrip('/')}/chat/completions"
+        url = f"{self.valves.API_BASE_URL.rstrip('/')}/chat/completions"
         headers = {
-            "Authorization": (f"Bearer {self.valves.OPENROUTER_API_KEY}"),
+            "Authorization": (f"Bearer {self.valves.API_KEY}"),
             "Content-Type": "application/json",
             "HTTP-Referer": "https://openwebui.com",
             "X-Title": "Open WebUI - DeepResearch",
@@ -612,7 +614,7 @@ class Pipe:
             if resp.status_code != HTTP_OK:
                 body = await resp.aread()
                 raise RuntimeError(
-                    f"OpenRouter {resp.status_code}: "
+                    f"API error {resp.status_code}: "
                     f"{body.decode(errors='replace')[:500]}"
                 )
 
@@ -816,7 +818,7 @@ class Pipe:
 
     async def _execute_visit(self, urls: list[str], goal: str) -> str:
         """Execute the visit tool using the configured backend."""
-        if self.valves.VISIT_ENABLED and self.valves.OPENROUTER_API_KEY:
+        if self.valves.VISIT_ENABLED and self.valves.API_KEY:
             return await self._execute_visit_with_tool(urls, goal)
         return await self._execute_visit_builtin(urls, goal)
 
@@ -887,8 +889,8 @@ class Pipe:
             )
 
         visit_tools = VisitTools()
-        visit_tools.valves.SUMMARY_MODEL_API_KEY = self.valves.OPENROUTER_API_KEY
-        visit_tools.valves.SUMMARY_MODEL_BASE_URL = self.valves.OPENROUTER_BASE_URL
+        visit_tools.valves.SUMMARY_MODEL_API_KEY = self.valves.API_KEY
+        visit_tools.valves.SUMMARY_MODEL_BASE_URL = self.valves.API_BASE_URL
         visit_tools.valves.MAX_PAGE_TOKENS = self.valves.MAX_PAGE_LENGTH
 
         pipe_self = self
@@ -1218,12 +1220,12 @@ class Pipe:
 
     def _preflight_check(self) -> str | None:
         """Return an error message if configuration is invalid."""
-        if not self.valves.OPENROUTER_API_KEY:
+        if not self.valves.API_KEY:
             return (
-                "**Configuration error:** OpenRouter API"
-                " key is not set. Go to *Admin Panel \u2192"
-                " Functions \u2192 Tongyi DeepResearch"
-                " \u2192 Valves* to configure it."
+                "**Configuration error:** API key is not"
+                " set. Go to *Admin Panel \u2192 Functions"
+                " \u2192 Tongyi DeepResearch \u2192 Valves*"
+                " to configure it."
             )
         if self._request is None:
             return (
@@ -1290,7 +1292,7 @@ class Pipe:
     ) -> tuple | str:
         """Call the model, returning (reasoning, content, full) or an error string."""
         try:
-            reasoning, content, usage = await self._call_openrouter(messages)
+            reasoning, content, usage = await self._call_llm(messages)
             tracker.update(usage)
         except Exception as exc:
             await self._emit_status(f"API error: {exc}", done=True)
@@ -1427,7 +1429,7 @@ class Pipe:
         )
 
         try:
-            reasoning, content, usage = await self._call_openrouter(messages)
+            reasoning, content, usage = await self._call_llm(messages)
             tracker.update(usage)
             full = self._reconstruct_full_turn(reasoning, content)
             answer = self._extract_answer(full)

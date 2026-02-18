@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "tongyi-deepresearch-openwebui-pipeline"
 version = "0.2.0"
-description = "Agentic deep-research pipe and visit tool for Open WebUI, powered by Tongyi DeepResearch via OpenRouter."
+description = "Agentic deep-research pipe and tools for Open WebUI, powered by Tongyi DeepResearch via OpenAI-compatible API."
 readme = "README.md"
 requires-python = ">=3.14"
 authors = [{name = "starship-s"}]
@@ -23,9 +23,9 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/<org>/tongyi-deepresearch-openwebui-pipeline"
-Repository = "https://github.com/<org>/tongyi-deepresearch-openwebui-pipeline"
-"Bug Tracker" = "https://github.com/<org>/tongyi-deepresearch-openwebui-pipeline/issues"
+Homepage = "https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline"
+Repository = "https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline"
+"Bug Tracker" = "https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/tongyi_deepresearch_openwebui_pipeline"]

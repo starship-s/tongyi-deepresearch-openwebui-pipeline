@@ -42,7 +42,7 @@ loop that alternates between model generation and tool execution:
    into `DEEPRESEARCH_SYSTEM_PROMPT_TEMPLATE`. If `SYSTEM_PROMPT_PREAMBLE` is
    set, it is prepended before the built-in prompt.
 
-2. **`_call_openrouter()`** streams a chat completion from OpenRouter.
+2. **`_call_llm()`** streams a chat completion from the configured API endpoint.
    Reasoning tokens arriving in a dedicated provider field are separated from
    content and wrapped in `<think>` tags so the model's chain-of-thought is
    preserved but hidden from the final display.
@@ -193,7 +193,7 @@ All four strategies are wrapped in `try`/`except` so the resolver degrades
 gracefully in non-Open-WebUI environments.
 
 **Note:** When `VISIT_ENABLED=True`, the pipe's `_execute_visit` method
-automatically propagates `OPENROUTER_API_KEY` into the visit tool's
+automatically propagates `API_KEY` into the visit tool's
 `SUMMARY_MODEL_API_KEY` valve, so users only need to configure one API key in
 most setups. The search and scholar tools do not require an API key — they use
 Open WebUI's built-in `search_web()` via the `request`/`user` context passed by

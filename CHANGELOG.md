@@ -23,5 +23,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Pipe delegates `visit` calls to the standalone tool when `VISIT_TOOL_ENABLED=True`.
 - Project is now installable via `pip install` using hatchling.
 
-[Unreleased]: https://github.com/<org>/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.0...HEAD
-[0.2.0]: https://github.com/<org>/tongyi-deepresearch-openwebui-pipeline/releases/tag/v0.2.0
+[Unreleased]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/releases/tag/v0.2.0

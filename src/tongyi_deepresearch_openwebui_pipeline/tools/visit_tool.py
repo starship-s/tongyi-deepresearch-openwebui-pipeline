@@ -1,7 +1,9 @@
 """DeepResearch visit tool for Open WebUI.
 
+id: deepresearch-visit
 title: DeepResearch Visit Tool
 author: starship-s
+author_url: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline
 version: 0.1.0
 license: MIT
 description: >

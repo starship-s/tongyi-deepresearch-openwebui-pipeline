@@ -81,7 +81,7 @@ sequenceDiagram
 ### Development
 
 ```bash
-git clone https://github.com/<org>/tongyi-deepresearch-openwebui-pipeline.git
+git clone https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline.git
 cd tongyi-deepresearch-openwebui-pipeline
 pip install -e ".[dev]"
 ```
@@ -91,11 +91,11 @@ pip install -e ".[dev]"
 Install directly from GitHub:
 
 ```bash
-pip install git+https://github.com/<org>/tongyi-deepresearch-openwebui-pipeline.git
+pip install git+https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline.git
 ```
 
 Or download the `.whl` from the
-[GitHub Releases](https://github.com/<org>/tongyi-deepresearch-openwebui-pipeline/releases)
+[GitHub Releases](https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/releases)
 page (produced by the CI workflow).
 
 ### Releases
@@ -110,7 +110,7 @@ GitHub Release containing:
   can drag-and-drop directly into Open WebUI's Functions / Tools panels.
 
 Browse all releases on the
-[Releases](https://github.com/<org>/tongyi-deepresearch-openwebui-pipeline/releases)
+[Releases](https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/releases)
 page.
 
 ## Open WebUI Setup

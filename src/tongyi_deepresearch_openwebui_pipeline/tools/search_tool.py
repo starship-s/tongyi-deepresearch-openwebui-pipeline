@@ -1,7 +1,9 @@
 """DeepResearch search tool for Open WebUI.
 
+id: deepresearch-search
 title: DeepResearch Search Tool
 author: starship-s
+author_url: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline
 version: 0.2.0
 license: MIT
 description: >
