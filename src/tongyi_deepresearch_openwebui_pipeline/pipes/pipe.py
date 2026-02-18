@@ -3,7 +3,7 @@ id: tongyi-deepresearch
 title: Tongyi DeepResearch
 author: starship-s
 author_url: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline
-version: 0.2.1
+version: 0.2.2
 license: MIT
 description: >
     Agentic deep-research pipe that uses Tongyi DeepResearch

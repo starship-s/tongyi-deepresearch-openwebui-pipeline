@@ -14,14 +14,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.14"
-
-      - run: pip install build
-
-      - run: python -m build
-
       - name: Extract release notes for tag
         run: |
           version="${GITHUB_REF_NAME#v}"
@@ -34,8 +26,7 @@ jobs:
           name: ${{ github.ref_name }}
           body_path: release_notes.md
           files: |
-            dist/*.whl
-            dist/*.tar.gz
             tongyi_deepresearch_pipe.py
             search_tool.py
+            scholar_tool.py
             visit_tool.py

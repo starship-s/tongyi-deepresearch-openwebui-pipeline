@@ -1,10 +1,10 @@
 # Tongyi DeepResearch — Open WebUI Pipeline
 
 > Agentic deep-research pipe that bridges Tongyi DeepResearch
-> (alibaba/tongyi-deepresearch-30b-a3b via OpenRouter) with Open WebUI.
+> (alibaba/tongyi-deepresearch-30b-a3b) with Open WebUI via any
+> OpenAI-compatible API.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Python ≥ 3.14](https://img.shields.io/badge/Python-%E2%89%A5%203.14-3776AB.svg)](https://www.python.org/)
 [![Open WebUI ≥ 0.4.0](https://img.shields.io/badge/Open%20WebUI-%E2%89%A5%200.4.0-2ea44f.svg)](https://openwebui.com/)
 [![OpenRouter](https://img.shields.io/badge/OpenRouter-supported-6C47FF.svg)](https://openrouter.ai/)
 
@@ -74,9 +74,30 @@ sequenceDiagram
 
 ### Prerequisites
 
-- Python ≥ 3.14
 - Open WebUI ≥ 0.4.0
-- An [OpenRouter](https://openrouter.ai/) API key
+- An [OpenRouter](https://openrouter.ai/) API key (or any OpenAI-compatible
+  provider hosting Tongyi DeepResearch)
+
+### Quick Start (recommended)
+
+1. Download the four `.py` files from the latest
+   [GitHub Release](https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/releases/latest):
+   - **`tongyi_deepresearch_pipe.py`** — the pipe (import as a Function)
+   - **`search_tool.py`** — web search tool
+   - **`scholar_tool.py`** — Google Scholar tool
+   - **`visit_tool.py`** — URL visit / extraction tool
+2. In Open WebUI, go to **Workspace → Functions**, click **Import** (or **+**
+   → **Import**), and import `tongyi_deepresearch_pipe.py`.
+3. Go to **Workspace → Tools** and import `search_tool.py`,
+   `scholar_tool.py`, and `visit_tool.py`.
+4. Open the pipe's **Valves** and set your `API_KEY`.
+5. Enable a Web Search engine in **Admin → Settings → Web Search**.
+6. Start a new chat and select **Tongyi DeepResearch** from the model picker.
+
+> **Tip:** With `AUTO_INSTALL_TOOLS=True` (default), you only need to import
+> the pipe — it will automatically register the three tool modules into Open
+> WebUI's **Tools** panel on first load. You can skip step 3 if you prefer
+> this approach.
 
 ### Development
 
@@ -86,52 +107,21 @@ cd tongyi-deepresearch-openwebui-pipeline
 pip install -e ".[dev]"
 ```
 
-### Production (wheel / git)
-
-Install directly from GitHub:
-
-```bash
-pip install git+https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline.git
-```
-
-Or download the `.whl` from the
-[GitHub Releases](https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/releases)
-page (produced by the CI workflow).
-
 ### Releases
 
 Every tagged version (`v*`) triggers the release workflow, which publishes a
-GitHub Release containing:
-
-- **Python wheel** (`.whl`) and **sdist** (`.tar.gz`) — install with
-  `pip install <file>`.
-- **`tongyi_deepresearch_pipe.py`**, **`search_tool.py`**,
-  **`scholar_tool.py`**, and **`visit_tool.py`** — the raw shim files you
-  can drag-and-drop directly into Open WebUI's Functions / Tools panels.
-
-Browse all releases on the
+GitHub Release containing the four `.py` shim files listed above. Browse all
+releases on the
 [Releases](https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/releases)
 page.
-
-## Open WebUI Setup
-
-1. Copy `src/tongyi_deepresearch_openwebui_pipeline/pipes/pipe.py` into Open WebUI's **Functions** panel (or mount via the package).
-2. Set `OPENROUTER_API_KEY` in the Pipe Valves.
-3. Enable a Web Search engine in **Admin → Settings → Web Search**.
-4. Start a new chat and select **Tongyi DeepResearch** from the model picker.
-
-With `AUTO_INSTALL_TOOLS=True` (default), the pipe automatically installs
-`search_tool`, `scholar_tool`, and `visit_tool` into Open WebUI's **Tools**
-panel on first load. You can also install tools manually by copying the source
-files.
 
 ## Pipe Valves Reference
 
 | Valve | Type | Default | Description |
 |---|---|---|---|
-| `OPENROUTER_API_KEY` | `str` | `""` | OpenRouter API key |
-| `OPENROUTER_BASE_URL` | `str` | `https://openrouter.ai/api/v1` | API base URL |
-| `MODEL_ID` | `str` | `alibaba/tongyi-deepresearch-30b-a3b` | Model on OpenRouter |
+| `API_KEY` | `str` | `""` | API key for the OpenAI-compatible endpoint |
+| `API_BASE_URL` | `str` | `https://openrouter.ai/api/v1` | OpenAI-compatible API base URL |
+| `MODEL_ID` | `str` | `alibaba/tongyi-deepresearch-30b-a3b` | Model identifier on the API provider |
 | `MAX_TOOL_ROUNDS` | `int` | `30` | Max agentic rounds (1–200) |
 | `SEARCH_RESULTS_PER_QUERY` | `int` | `5` | Results per search query (1–20) |
 | `MAX_QUERIES_PER_SEARCH` | `int` | `5` | Max queries per `search` call (1–10) |
