@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.14] - 2026-02-18
+
+### Changed
+
+- Status bar now shows input and output tokens separately
+  (e.g. "1,000 in / 500 out") since they are priced differently.
+
 ## [0.2.13] - 2026-02-18
 
 ### Fixed
@@ -157,7 +164,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Pipe delegates `visit` calls to the standalone tool when `VISIT_TOOL_ENABLED=True`.
 - Project is now installable via `pip install` using hatchling.
 
-[Unreleased]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.13...HEAD
+[Unreleased]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.14...HEAD
+[0.2.14]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.13...v0.2.14
 [0.2.13]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.12...v0.2.13
 [0.2.12]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.11...v0.2.12
 [0.2.11]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.10...v0.2.11

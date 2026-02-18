@@ -205,7 +205,7 @@ class _CostTracker:
 
     def summary(self, prefix: str = "") -> str:
         """Format a human-readable cost summary string."""
-        tok = f"{self.input_tokens + self.output_tokens:,} tokens"
+        tok = f"{self.input_tokens:,} in / {self.output_tokens:,} out"
         if self.has_estimates:
             tok += " (est.)"
         if self.cost > 0:

@@ -234,7 +234,7 @@ class TestCostTracker:
 
     def test_empty_summary(self) -> None:
         t = _CostTracker()
-        assert t.summary() == "0 tokens"
+        assert t.summary() == "0 in / 0 out"
 
     def test_update_accumulates(self) -> None:
         t = _CostTracker()
@@ -247,12 +247,12 @@ class TestCostTracker:
     def test_summary_with_tokens(self) -> None:
         t = _CostTracker()
         t.update({"prompt_tokens": 1000, "completion_tokens": 500})
-        assert t.summary() == "1,500 tokens"
+        assert t.summary() == "1,000 in / 500 out"
 
     def test_summary_with_cost(self) -> None:
         t = _CostTracker()
         t.update({"prompt_tokens": 1000, "completion_tokens": 500, "cost": 0.05})
-        assert "1,500 tokens" in t.summary()
+        assert "1,000 in / 500 out" in t.summary()
         assert "$0.05" in t.summary()
 
     def test_summary_small_cost_precision(self) -> None:
