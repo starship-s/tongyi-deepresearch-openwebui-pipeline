@@ -3,7 +3,7 @@ id: deepresearch-search
 title: DeepResearch Search Tool
 author: starship-s
 author_url: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline
-version: 0.2.2
+version: 0.2.3
 license: MIT
 description: >
     Searches the web via Open WebUI's built-in search engine and

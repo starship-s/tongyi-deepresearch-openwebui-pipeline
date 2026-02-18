@@ -7,13 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.2.2] - 2026-02-17
+## [0.2.3] - 2026-02-17
 
 ### Fixed
 
 - Module docstrings now start metadata on the first line so Open WebUI correctly
   picks up `title`, `author`, `version`, and other fields.
-- Removed `required_open_webui_version` from pipe metadata.
+- Corrected `required_open_webui_version` from 0.4.0 to 0.5.0 (the project uses
+  0.5+ import paths and the `__request__` pipe parameter).
 - Added missing `scholar_tool.py` to release assets.
 
 ### Changed
@@ -41,6 +42,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Pipe delegates `visit` calls to the standalone tool when `VISIT_TOOL_ENABLED=True`.
 - Project is now installable via `pip install` using hatchling.
 
-[Unreleased]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.2...HEAD
-[0.2.2]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.0...v0.2.2
+[Unreleased]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.3...HEAD
+[0.2.3]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.0...v0.2.3
 [0.2.0]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/releases/tag/v0.2.0

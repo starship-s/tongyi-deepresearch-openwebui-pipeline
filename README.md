@@ -5,13 +5,14 @@
 > OpenAI-compatible API.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Open WebUI ≥ 0.4.0](https://img.shields.io/badge/Open%20WebUI-%E2%89%A5%200.4.0-2ea44f.svg)](https://openwebui.com/)
+[![Open WebUI ≥ 0.5.0](https://img.shields.io/badge/Open%20WebUI-%E2%89%A5%200.5.0-2ea44f.svg)](https://openwebui.com/)
 [![OpenRouter](https://img.shields.io/badge/OpenRouter-supported-6C47FF.svg)](https://openrouter.ai/)
 
 ## Overview
 
 This project bridges Alibaba's Tongyi DeepResearch model into Open WebUI's
-agentic pipe system via OpenRouter. The pipe implements a multi-turn ReAct loop
+agentic pipe system via OpenRouter (or any OpenAI-compatible
+  provider hosting `alibaba/tongyi-deepresearch-30b-a3b`). The pipe implements a multi-turn ReAct loop
 that intercepts the model's XML-structured `<tool_call>` blocks, translates
 batched search queries into concurrent web searches using whatever search engine
 is configured in Open WebUI, fetches and processes URLs, then feeds the results
@@ -74,7 +75,7 @@ sequenceDiagram
 
 ### Prerequisites
 
-- Open WebUI ≥ 0.4.0
+- Open WebUI ≥ 0.5.0
 - An [OpenRouter](https://openrouter.ai/) API key (or any OpenAI-compatible
   provider hosting Tongyi DeepResearch)
 
@@ -109,11 +110,7 @@ pip install -e ".[dev]"
 
 ### Releases
 
-Every tagged version (`v*`) triggers the release workflow, which publishes a
-GitHub Release containing the four `.py` shim files listed above. Browse all
-releases on the
-[Releases](https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/releases)
-page.
+Browse all releases on the [Releases](https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/releases) page.
 
 ## Pipe Valves Reference
 

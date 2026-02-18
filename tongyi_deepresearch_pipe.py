@@ -3,7 +3,7 @@ id: tongyi-deepresearch
 title: Tongyi DeepResearch
 author: starship-s
 author_url: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline
-version: 0.2.2
+version: 0.2.3
 license: MIT
 description: >
     Agentic deep-research pipe that uses Tongyi DeepResearch
@@ -12,6 +12,7 @@ description: >
     into real web searches and URL fetches using Open WebUI's
     built-in web search and content loader, then feeds results
     back until the model produces a final answer.
+required_open_webui_version: 0.5.0
 requirements: httpx
 """
 
