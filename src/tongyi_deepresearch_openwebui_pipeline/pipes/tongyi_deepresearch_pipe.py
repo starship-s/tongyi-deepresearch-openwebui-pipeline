@@ -546,7 +546,7 @@ class Pipe:
             )
             return None
 
-    def _auto_install_model_metadata(self) -> None:
+    def _auto_install_model_metadata(self) -> None:  # noqa: C901
         """Create a Model DB entry so Open WebUI displays our icon and description.
 
         Open WebUI ignores description and profile_image_url in pipes() return.
@@ -568,7 +568,18 @@ class Pipe:
             "/Alibaba-NLP/DeepResearch"
             "/main/assets/tongyi.png"
         )
-        desired_icon = Pipe._fetch_icon_as_data_url(_icon_url) or _icon_url
+        existing = Models.get_model_by_id(model_id)
+        existing_icon = None
+        if existing is not None:
+            meta_dict = Pipe._clone_meta_from_existing(existing)
+            existing_icon = meta_dict.get("profile_image_url")
+        fetched_icon = Pipe._fetch_icon_as_data_url(_icon_url)
+        if fetched_icon:
+            desired_icon = fetched_icon
+        elif existing_icon:
+            desired_icon = existing_icon
+        else:
+            desired_icon = _icon_url
         desired_description = (
             "Tongyi DeepResearch is an agentic large"
             " language model featuring 30.5 billion"
@@ -583,8 +594,6 @@ class Pipe:
             " BrowseComp-ZH, WebWalkerQA,"
             " xbench-DeepSearch, FRAMES and SimpleQA."
         )
-
-        existing = Models.get_model_by_id(model_id)
 
         if existing is None:
             try:
