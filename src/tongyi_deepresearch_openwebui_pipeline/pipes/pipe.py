@@ -281,6 +281,15 @@ class Pipe:
                 " loader."
             ),
         )
+        SEARCH_TOOL_ENABLED: bool = Field(
+            default=True,
+            description=(
+                "Use the standalone search_tool for"
+                " LLM-based evidence extraction. When"
+                " False, falls back to the built-in Open"
+                " WebUI web search engine."
+            ),
+        )
         TEMPERATURE: float = Field(default=0.6, ge=0.0, le=2.0)
         TOP_P: float = Field(default=0.95, ge=0.0, le=1.0)
         PRESENCE_PENALTY: float = Field(default=1.1, ge=0.0, le=2.0)
@@ -615,7 +624,7 @@ class Pipe:
             queries = arguments.get("query", [])
             if isinstance(queries, str):
                 queries = [queries]
-            return await self._execute_search(queries)
+            return await self._dispatch_search(queries)
 
         if name == "visit":
             urls = arguments.get("url", [])
@@ -628,8 +637,7 @@ class Pipe:
             queries = arguments.get("query", [])
             if isinstance(queries, str):
                 queries = [queries]
-            scholarly = [f"academic research: {q}" for q in queries]
-            return await self._execute_search(scholarly)
+            return await self._dispatch_search(queries, scholar=True)
 
         if name == "PythonInterpreter":
             return (
@@ -709,6 +717,62 @@ class Pipe:
 
         return None
 
+    @staticmethod
+    def _resolve_search_tools_class() -> type | None:
+        """Locate the search-tool ``Tools`` class across install methods.
+
+        Tries four strategies in order:
+        1. Package import (pip-installed).
+        2. Direct module import (``search_tool.py`` on ``sys.path``).
+        3. Scan ``sys.modules`` for an Open WebUI-loaded tool module
+           (stored as ``tool_{id}``).
+        4. Load from the Open WebUI database via
+           ``load_tool_module_by_id``.
+        """
+        import sys as _sys  # noqa: PLC0415
+
+        try:
+            from tongyi_deepresearch_openwebui_pipeline.tools.search_tool import (  # noqa: PLC0415
+                Tools,
+            )
+
+            return Tools  # type: ignore[no-any-return]
+        except ImportError:
+            pass
+
+        try:
+            from search_tool import (  # type: ignore[import-not-found]  # noqa: PLC0415
+                Tools,
+            )
+
+            return Tools  # type: ignore[no-any-return]
+        except ImportError:
+            pass
+
+        for _name, mod in _sys.modules.items():
+            if not _name.startswith("tool_"):
+                continue
+            cls = getattr(mod, "Tools", None)
+            if cls is not None and callable(getattr(cls, "search", None)):
+                return cls  # type: ignore[no-any-return]
+
+        try:
+            from open_webui.models.tools import (  # type: ignore[import-not-found]  # noqa: PLC0415
+                Tools as ToolsDB,
+            )
+            from open_webui.utils.plugin import (  # type: ignore[import-not-found]  # noqa: PLC0415
+                load_tool_module_by_id,
+            )
+
+            for tool in ToolsDB.get_tools():
+                if "class Tools" in tool.content and "def search" in tool.content:
+                    instance, _ = load_tool_module_by_id(tool.id)
+                    return type(instance)
+        except Exception:  # noqa: S110
+            pass
+
+        return None
+
     async def _execute_visit_with_tool(self, urls: list[str], goal: str) -> str:
         """Visit URLs using the standalone visit_tool module."""
         VisitTools = self._resolve_visit_tools_class()  # noqa: N806
@@ -778,6 +842,19 @@ class Pipe:
     #  Search tool                                                         #
     # ================================================================== #
 
+    async def _dispatch_search(
+        self,
+        queries: list[str],
+        *,
+        scholar: bool = False,
+    ) -> str:
+        """Route a search to the standalone tool or the built-in fallback."""
+        if self.valves.SEARCH_TOOL_ENABLED and self.valves.OPENROUTER_API_KEY:
+            return await self._execute_search_with_tool(queries, scholar=scholar)
+        if scholar:
+            queries = [f"academic research: {q}" for q in queries]
+        return await self._execute_search(queries)
+
     async def _execute_search(
         self,
         queries: list[str],
@@ -837,6 +914,38 @@ class Pipe:
             f"A search for '{query}' found {len(snippets)} results:\n\n## Web Results\n"
         )
         return header + "\n\n".join(snippets)
+
+    async def _execute_search_with_tool(
+        self,
+        queries: list[str],
+        *,
+        scholar: bool = False,
+    ) -> str:
+        """Execute search using the standalone search_tool module."""
+        SearchTools = self._resolve_search_tools_class()  # noqa: N806
+        if SearchTools is None:
+            return (
+                "[search] search_tool module not found —"
+                " disable SEARCH_TOOL_ENABLED or install"
+                " search_tool.py."
+            )
+
+        search_tools = SearchTools()
+        search_tools.valves.SEARCH_MODEL_API_KEY = self.valves.OPENROUTER_API_KEY
+        search_tools.valves.SEARCH_MODEL_BASE_URL = self.valves.OPENROUTER_BASE_URL
+
+        pipe_self = self
+
+        async def _search_emitter(event: dict) -> None:
+            d = event.get("data", {})
+            await pipe_self._emit_status(
+                d.get("description", ""),
+                d.get("done", False),
+            )
+
+        if scholar:
+            return await search_tools.google_scholar(queries, _search_emitter)
+        return await search_tools.search(queries, _search_emitter)
 
     # ---- tool-call display card -------------------------------------- #
 
