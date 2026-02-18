@@ -9,6 +9,26 @@ contract the model uses to request actions, and a step-by-step walkthrough for
 adding new tools. If you are modifying the pipe or adding capabilities, start
 here.
 
+## Project Layout
+
+The project uses a standard `src/` layout so it is installable as a Python
+package via `pip install -e ".[dev]"`. The root-level `tongyi_deepresearch_pipe.py`
+and `visit_tool.py` are **thin shims** that re-export from the package — they
+exist solely for Open WebUI compatibility (which loads pipes/tools as individual
+files).
+
+```
+src/tongyi_deepresearch_openwebui_pipeline/   ← the real package
+├── __init__.py
+├── pipes/
+│   └── pipe.py                               ← main pipe implementation
+└── tools/
+    └── visit_tool.py                         ← visit/extraction tool
+
+tongyi_deepresearch_pipe.py                   ← shim: re-exports Pipe
+visit_tool.py                                 ← shim: re-exports Tools
+```
+
 ## ReAct Loop (`src/tongyi_deepresearch_openwebui_pipeline/pipes/pipe.py`)
 
 The core agentic behaviour lives in `Pipe.pipe()`. Each user message triggers a
@@ -157,7 +177,7 @@ pytest
 3. If the tool is complex, create
    `src/tongyi_deepresearch_openwebui_pipeline/tools/<your_tool>.py` with a
    `Tools` class and `Valves(BaseModel)`, mirroring the structure of
-   `visit_tool.py`.
+   `tools/visit_tool.py`.
 
 4. Import and instantiate it inside the `if name == "<your_tool>":` branch,
    propagating the API key from `self.valves` as done for `visit_tool`.

@@ -1,9 +1,15 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [project]
 name = "tongyi-deepresearch-openwebui-pipeline"
-version = "0.1.0"
-description = "Add your description here"
+version = "0.2.0"
+description = "Agentic deep-research pipe and visit tool for Open WebUI, powered by Tongyi DeepResearch via OpenRouter."
 readme = "README.md"
 requires-python = ">=3.14"
+authors = [{name = "starship-s"}]
+license = {text = "MIT"}
 dependencies = [
     "httpx>=0.28.1",
     "pydantic>=2.12.5",
@@ -16,12 +22,20 @@ dev = [
   "pyright",
 ]
 
+[project.urls]
+Homepage = "https://github.com/<org>/tongyi-deepresearch-openwebui-pipeline"
+Repository = "https://github.com/<org>/tongyi-deepresearch-openwebui-pipeline"
+"Bug Tracker" = "https://github.com/<org>/tongyi-deepresearch-openwebui-pipeline/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tongyi_deepresearch_openwebui_pipeline"]
+
 # ---------------------------------------------------------------------------
 # Pyright
 # ---------------------------------------------------------------------------
 [tool.pyright]
 pythonVersion = "3.14"
-include = ["tongyi_deepresearch_pipe.py", "visit_tool.py"]
+include = ["src"]
 exclude = [
   "**/node_modules",
   "**/__pycache__",
@@ -102,3 +116,9 @@ ignore = [
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
+
+# ---------------------------------------------------------------------------
+# Pytest
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+testpaths = ["tests"]
