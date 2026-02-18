@@ -1,0 +1,166 @@
+# AGENTS.md
+
+## Overview
+
+This file is the authoritative guide for contributors who want to understand or
+extend the agentic system powering the Tongyi DeepResearch Open WebUI pipeline.
+It describes the ReAct loop that drives multi-turn research, the XML tool
+contract the model uses to request actions, and a step-by-step walkthrough for
+adding new tools. If you are modifying the pipe or adding capabilities, start
+here.
+
+## ReAct Loop (`src/tongyi_deepresearch_openwebui_pipeline/pipes/pipe.py`)
+
+The core agentic behaviour lives in `Pipe.pipe()`. Each user message triggers a
+loop that alternates between model generation and tool execution:
+
+1. **`_build_system_prompt()`** injects today's date and the tool definitions
+   into `DEEPRESEARCH_SYSTEM_PROMPT_TEMPLATE`. If `SYSTEM_PROMPT_PREAMBLE` is
+   set, it is prepended before the built-in prompt.
+
+2. **`_call_openrouter()`** streams a chat completion from OpenRouter.
+   Reasoning tokens arriving in a dedicated provider field are separated from
+   content and wrapped in `<think>` tags so the model's chain-of-thought is
+   preserved but hidden from the final display.
+
+3. **`_extract_tool_call()`** parses the first `<tool_call>` JSON block from
+   the assistant response. It handles standard JSON as well as the special
+   `PythonInterpreter` format that wraps code in `<code>` tags.
+
+4. **`_execute_tool()`** routes the parsed call to the appropriate handler —
+   `_execute_search` for search/google_scholar, the `visit_tool` import (or
+   the built-in fallback) for visit, or a graceful error string for
+   unexecutable tools like `PythonInterpreter` and `parse_file`.
+
+5. The result is injected back as a **`user` message** wrapped in
+   `<tool_response>` tags, and the loop continues.
+
+6. **`_extract_answer()`** detects `<answer>` tags in the model's output to
+   terminate the loop and return the final answer to the user.
+
+7. A **context-length guard** at `MAX_CONTEXT_CHARS` forces a final answer
+   before the model's context window is exhausted. When the total character
+   count of all messages exceeds this threshold, a special user message is
+   appended asking the model to wrap up immediately.
+
+## XML Tool Contract
+
+The model communicates tool requests and receives results through XML tags.
+These formats are baked into `DEEPRESEARCH_SYSTEM_PROMPT_TEMPLATE` and must be
+respected by any new tool handler.
+
+### Tool call (model → pipe)
+
+```
+<tool_call>
+{"name": "<function-name>", "arguments": <args-json-object>}
+</tool_call>
+```
+
+### Tool response (pipe → model)
+
+```
+<tool_response>
+…result text…
+</tool_response>
+```
+
+### Final answer (model → user)
+
+```
+<answer>
+…answer text…
+</answer>
+```
+
+## Tool Inventory
+
+| Tool | Handler | Notes |
+|---|---|---|
+| `search` | `_execute_search()` → Open WebUI `search_web()` | Accepts array of queries; runs concurrently up to `MAX_QUERIES_PER_SEARCH` |
+| `visit` | `visit_tool.Tools.visit()` or built-in `get_content_from_url()` | Controlled by `VISIT_TOOL_ENABLED` valve |
+| `google_scholar` | `_execute_search()` with `"academic research: "` prefix | Reuses the same search backend |
+| `PythonInterpreter` | Graceful error string | Not executable in this environment |
+| `parse_file` | Graceful error string | Not executable in this environment |
+
+## Visit Tool Deep-Dive (`src/tongyi_deepresearch_openwebui_pipeline/tools/visit_tool.py`)
+
+The visit tool implements a three-stage pipeline in `Tools._process_url()`:
+
+1. **`_fetch_and_clean(url)`** — Uses `httpx.AsyncClient` to GET the page,
+   strips HTML tags with a regex, runs `html.unescape`, collapses whitespace,
+   and truncates to `MAX_PAGE_TOKENS` characters.
+
+2. **`_call_extractor(content, goal)`** — Sends `EXTRACTOR_PROMPT` (with
+   `{webpage_content}` and `{goal}` placeholders filled in) to the extractor
+   LLM via an OpenAI-compatible chat completion call. Parses the JSON response
+   for `rational`, `evidence`, and `summary` fields. On failure, retries up to
+   `MAX_RETRIES` times, shrinking the content by 30% on each attempt to stay
+   within the extractor model's context window.
+
+3. **`_fmt_visit_ok()` / `_fmt_visit_error()`** — Formats the result into the
+   string the pipe expects inside `<tool_response>` tags. The format matches
+   the upstream DeepResearch visit output convention:
+   `"The useful information in {url} for user goal {goal} as follows: …"`.
+
+**Note:** When `VISIT_TOOL_ENABLED=True`, the pipe's `_execute_tool` method
+automatically propagates `OPENROUTER_API_KEY` into the visit tool's
+`SUMMARY_MODEL_API_KEY` valve, so users only need to configure one API key in
+most setups.
+
+## Development Workflow
+
+Install dev dependencies with `pip install -e ".[dev]"`. The three dev tools are
+configured in `pyproject.toml` and must pass before any contribution is merged.
+
+### Ruff (lint + format)
+
+Ruff handles both linting and formatting (there is no separate `black` config).
+Line length is 88 characters. Docstrings must follow the **Google** convention
+(`[tool.ruff.lint.pydocstyle] convention = "google"`).
+
+```bash
+ruff check .          # lint
+ruff check --fix .    # lint with auto-fix
+ruff format .         # format
+ruff format --check . # verify formatting without writing
+```
+
+The lint rule set is extensive — see `[tool.ruff.lint] select` in
+`pyproject.toml` for the full list. Key rule groups: Pyflakes, pycodestyle,
+isort, pydocstyle (Google), pyupgrade, flake8-bandit, flake8-bugbear, and
+Pylint.
+
+### Pyright (type checking)
+
+Pyright runs in **standard** mode targeting Python 3.14.
+
+```bash
+pyright
+```
+
+### Pytest
+
+```bash
+pytest
+```
+
+## Adding a New Tool — Step-by-Step Guide
+
+1. In `DEEPRESEARCH_SYSTEM_PROMPT_TEMPLATE` (top of `pipes/pipe.py`), add a
+   new `{"type": "function", "function": {...}}` JSON line inside the
+   `<tools>` block, following the exact same format as `search` and `visit`.
+
+2. In `Pipe._execute_tool()`, add a new `if name == "<your_tool>":` branch
+   that calls your handler and returns a plain string result.
+
+3. If the tool is complex, create
+   `src/tongyi_deepresearch_openwebui_pipeline/tools/<your_tool>.py` with a
+   `Tools` class and `Valves(BaseModel)`, mirroring the structure of
+   `visit_tool.py`.
+
+4. Import and instantiate it inside the `if name == "<your_tool>":` branch,
+   propagating the API key from `self.valves` as done for `visit_tool`.
+
+5. Update this `AGENTS.md` Tool Inventory table and the `README.md` Features
+   list.

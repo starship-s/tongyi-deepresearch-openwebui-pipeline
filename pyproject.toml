@@ -21,12 +21,14 @@ dev = [
 # ---------------------------------------------------------------------------
 [tool.pyright]
 pythonVersion = "3.14"
-include = ["phantom_bridge"]
+include = ["tongyi_deepresearch_pipe.py", "visit_tool.py"]
 exclude = [
   "**/node_modules",
   "**/__pycache__",
   ".venv",
 ]
+venvPath = "."
+venv = ".venv"
 typeCheckingMode = "standard"
 reportMissingImports = true
 reportMissingTypeStubs = false

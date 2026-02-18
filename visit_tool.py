@@ -1,42 +1,74 @@
-"""
+"""DeepResearch visit tool for Open WebUI.
+
 title: DeepResearch Visit Tool
 author: starship-s
 version: 0.1.0
 license: MIT
-description: Visits URLs and extracts structured evidence via a dedicated extractor LLM call, mirroring the upstream DeepResearch visit/extraction pipeline.
+description: >
+    Visits URLs and extracts structured evidence via a
+    dedicated extractor LLM call, mirroring the upstream
+    DeepResearch visit/extraction pipeline.
 requirements: httpx
 """
+
+from __future__ import annotations
 
 import asyncio
 import html
 import json
 import re
-from typing import Awaitable, Callable
+from typing import TYPE_CHECKING
 
 import httpx
 from pydantic import BaseModel, Field
 
-EXTRACTOR_PROMPT = """Please process the following webpage content and user goal to extract relevant information:
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
 
-## **Webpage Content** 
-{webpage_content}
-
-## **User Goal**
-{goal}
-
-## **Task Guidelines**
-1. **Content Scanning for Rationale**: Locate the **specific sections/data** directly related to the user's goal within the webpage content
-2. **Key Extraction for Evidence**: Identify and extract the **most relevant information** from the content, you never miss any important information, output the **full original context** of the content as far as possible, it can be more than three paragraphs.
-3. **Summary Output for Summary**: Organize into a concise paragraph with logical flow, prioritizing clarity and judge the contribution of the information to the goal.
-
-**Final Output Format using JSON format has "rational", "evidence", "summary" feilds**
-"""
+EXTRACTOR_PROMPT = (
+    "Please process the following webpage content"
+    " and user goal to extract relevant"
+    " information:\n"
+    "\n"
+    "## **Webpage Content**\n"
+    "{webpage_content}\n"
+    "\n"
+    "## **User Goal**\n"
+    "{goal}\n"
+    "\n"
+    "## **Task Guidelines**\n"
+    "1. **Content Scanning for Rationale**: Locate"
+    " the **specific sections/data** directly"
+    " related to the user's goal within the"
+    " webpage content\n"
+    "2. **Key Extraction for Evidence**: Identify"
+    " and extract the **most relevant information**"
+    " from the content, you never miss any"
+    " important information, output the **full"
+    " original context** of the content as far as"
+    " possible, it can be more than three"
+    " paragraphs.\n"
+    "3. **Summary Output for Summary**: Organize"
+    " into a concise paragraph with logical flow,"
+    " prioritizing clarity and judge the"
+    " contribution of the information to the"
+    " goal.\n"
+    "\n"
+    "**Final Output Format using JSON format has"
+    ' "rational", "evidence", "summary"'
+    " feilds**\n"
+)
 
 
 class Tools:
+    """URL visitor that extracts structured evidence via an extractor LLM."""
+
     class Valves(BaseModel):
+        """User-configurable settings for the visit tool."""
+
         SUMMARY_MODEL_API_KEY: str = Field(
-            default="", description="API key for the extractor LLM"
+            default="",
+            description="API key for the extractor LLM",
         )
         SUMMARY_MODEL_BASE_URL: str = Field(
             default="https://openrouter.ai/api/v1",
@@ -57,13 +89,15 @@ class Tools:
             description="Max characters kept from a fetched page",
         )
         MAX_RETRIES: int = Field(
-            default=3, description="LLM retry attempts per URL"
+            default=3,
+            description="LLM retry attempts per URL",
         )
 
-    def __init__(self):
+    def __init__(self) -> None:
+        """Initialise valves with defaults."""
         self.valves = self.Valves()
 
-    # ---- private helpers ------------------------------------------------- #
+    # ---- private helpers --------------------------------------------- #
 
     async def _fetch_and_clean(self, url: str) -> str:
         async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
@@ -88,7 +122,7 @@ class Tools:
             "temperature": self.valves.SUMMARY_TEMPERATURE,
         }
         headers = {
-            "Authorization": f"Bearer {self.valves.SUMMARY_MODEL_API_KEY}",
+            "Authorization": (f"Bearer {self.valves.SUMMARY_MODEL_API_KEY}"),
             "Content-Type": "application/json",
         }
         url = f"{self.valves.SUMMARY_MODEL_BASE_URL.rstrip('/')}/chat/completions"
@@ -127,7 +161,11 @@ class Tools:
         for _ in range(self.valves.MAX_RETRIES):
             try:
                 raw_dict = await self._call_extractor(content, goal)
-            except (httpx.HTTPError, KeyError, json.JSONDecodeError) as exc:
+            except (
+                httpx.HTTPError,
+                KeyError,
+                json.JSONDecodeError,
+            ) as exc:
                 last_exc = exc
                 content = content[: int(len(content) * 0.7)]
                 continue
@@ -135,16 +173,23 @@ class Tools:
             evidence = raw_dict.get("evidence")
             summary = raw_dict.get("summary")
             if evidence and summary:
-                return self._fmt_visit_ok(url, goal, str(evidence), str(summary))
+                return self._fmt_visit_ok(
+                    url,
+                    goal,
+                    str(evidence),
+                    str(summary),
+                )
             content = content[: int(len(content) * 0.7)]
 
         if last_exc is not None:
             return self._fmt_visit_error(url, goal, str(last_exc))
         return self._fmt_visit_error(
-            url, goal, "Extractor LLM failed to return valid JSON after retries"
+            url,
+            goal,
+            "Extractor LLM failed to return valid JSON after retries",
         )
 
-    # ---- formatting helpers ---------------------------------------------- #
+    # ---- formatting helpers ------------------------------------------ #
 
     @staticmethod
     def _fmt_visit_ok(url: str, goal: str, evidence: str, summary: str) -> str:
@@ -161,34 +206,47 @@ class Tools:
             f"The useful information in {url} for user goal "
             f"{goal} as follows:\n\n"
             f"Evidence in page:\n"
-            f"The provided webpage content could not be accessed. "
-            f"Error: {error}\n\n"
+            f"The provided webpage content could not be"
+            f" accessed. Error: {error}\n\n"
             f"Summary:\n"
             f"The webpage content could not be processed.\n"
         )
 
-    # ---- public tool method ---------------------------------------------- #
+    # ---- public tool method ------------------------------------------ #
 
     async def visit(
         self,
         url: list[str],
         goal: str,
-        __event_emitter__: Callable[[dict], Awaitable[None]] = None,
+        __event_emitter__: (Callable[[dict], Awaitable[None]] | None) = None,
     ) -> str:
-        """
-        Visit one or more webpages and extract structured evidence relevant to a research goal.
-        Returns a summary with supporting evidence for each URL.
+        """Visit webpages and extract structured evidence.
+
+        Returns a summary with supporting evidence for each
+        URL.
         """
 
-        async def emit(msg: str, done: bool = False):
+        async def emit(msg: str, done: bool = False) -> None:
             if __event_emitter__:
                 await __event_emitter__(
-                    {"type": "status", "data": {"description": msg, "done": done}}
+                    {
+                        "type": "status",
+                        "data": {
+                            "description": msg,
+                            "done": done,
+                        },
+                    }
                 )
 
         if not self.valves.SUMMARY_MODEL_API_KEY:
-            await emit("Error: SUMMARY_MODEL_API_KEY is not configured.", done=True)
-            return "Error: SUMMARY_MODEL_API_KEY valve is not set. Configure it in the tool settings."
+            await emit(
+                "Error: SUMMARY_MODEL_API_KEY is not configured.",
+                done=True,
+            )
+            return (
+                "Error: SUMMARY_MODEL_API_KEY valve is not"
+                " set. Configure it in the tool settings."
+            )
 
         if isinstance(url, str):
             url = [url]
@@ -198,9 +256,7 @@ class Tools:
             result = await self._process_url(url[0], goal)
         else:
             await emit(f"Visiting {len(url)} pages concurrently…")
-            results = await asyncio.gather(
-                *(self._process_url(u, goal) for u in url)
-            )
+            results = await asyncio.gather(*(self._process_url(u, goal) for u in url))
             result = "\n=======\n".join(results)
 
         await emit("Done.", done=True)
