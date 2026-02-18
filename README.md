@@ -42,16 +42,16 @@ sequenceDiagram
     loop ReAct rounds
         P->>OR: chat/completions (stream)
         OR-->>P: <tool_call> or <answer>
-        alt tool_call = search / google_scholar
+        alt tool_call = search (SEARCH_ENABLED)
             P->>WS: search_web()
             WS-->>P: results
-        else tool_call = visit (VISIT_TOOL_ENABLED=True)
+        else tool_call = google_scholar (SCHOLAR_ENABLED)
+            P->>WS: search_web() (with "academic research:" prefix)
+            WS-->>P: results
+        else tool_call = visit (VISIT_ENABLED)
             P->>VT: visit(urls, goal)
             VT->>VT: _fetch_and_clean() + _call_extractor()
             VT-->>P: structured evidence
-        else tool_call = visit (VISIT_TOOL_ENABLED=False)
-            P->>OW: get_content_from_url()
-            OW-->>P: raw content
         end
         P->>OR: <tool_response>…</tool_response>
     end
@@ -67,7 +67,8 @@ sequenceDiagram
 - **Collapsible tool-call cards** rendered in the chat UI as native `<details>` blocks
 - **Cost and token tracking** — running totals displayed in the status bar after each model call
 - **Configurable context-length guard** (`MAX_CONTEXT_CHARS`) — forces a final answer before the model's context window is exhausted
-- **`VISIT_TOOL_ENABLED` toggle** — switch between the standalone LLM extraction pipeline and the built-in Open WebUI content loader
+- **Per-tool enable/disable valves** — individually control `search`, `google_scholar`, and `visit` via `SEARCH_ENABLED`, `SCHOLAR_ENABLED`, `VISIT_ENABLED`; disabled tools are excluded from the system prompt
+- **Auto-install to Open WebUI** — when `AUTO_INSTALL_TOOLS=True`, enabled tool modules are automatically registered/updated in Open WebUI's tool registry on startup
 
 ## Installation
 
@@ -104,9 +105,9 @@ GitHub Release containing:
 
 - **Python wheel** (`.whl`) and **sdist** (`.tar.gz`) — install with
   `pip install <file>`.
-- **`tongyi_deepresearch_pipe.py`** and **`visit_tool.py`** — the raw shim
-  files you can drag-and-drop directly into Open WebUI's Functions / Tools
-  panels.
+- **`tongyi_deepresearch_pipe.py`**, **`search_tool.py`**,
+  **`scholar_tool.py`**, and **`visit_tool.py`** — the raw shim files you
+  can drag-and-drop directly into Open WebUI's Functions / Tools panels.
 
 Browse all releases on the
 [Releases](https://github.com/<org>/tongyi-deepresearch-openwebui-pipeline/releases)
@@ -115,11 +116,14 @@ page.
 ## Open WebUI Setup
 
 1. Copy `src/tongyi_deepresearch_openwebui_pipeline/pipes/pipe.py` into Open WebUI's **Functions** panel (or mount via the package).
-2. Copy `src/tongyi_deepresearch_openwebui_pipeline/tools/visit_tool.py` into Open WebUI's **Tools** panel.
-3. Set `OPENROUTER_API_KEY` in the Pipe Valves.
-4. Set `SUMMARY_MODEL_API_KEY` in the Visit Tool Valves (can be the same key).
-5. Enable a Web Search engine in **Admin → Settings → Web Search**.
-6. Start a new chat and select **Tongyi DeepResearch** from the model picker.
+2. Set `OPENROUTER_API_KEY` in the Pipe Valves.
+3. Enable a Web Search engine in **Admin → Settings → Web Search**.
+4. Start a new chat and select **Tongyi DeepResearch** from the model picker.
+
+With `AUTO_INSTALL_TOOLS=True` (default), the pipe automatically installs
+`search_tool`, `scholar_tool`, and `visit_tool` into Open WebUI's **Tools**
+panel on first load. You can also install tools manually by copying the source
+files.
 
 ## Pipe Valves Reference
 
@@ -132,7 +136,10 @@ page.
 | `SEARCH_RESULTS_PER_QUERY` | `int` | `5` | Results per search query (1–20) |
 | `MAX_QUERIES_PER_SEARCH` | `int` | `5` | Max queries per `search` call (1–10) |
 | `MAX_PAGE_LENGTH` | `int` | `50000` | Max chars kept from a fetched page |
-| `VISIT_TOOL_ENABLED` | `bool` | `True` | Use standalone `visit_tool` for LLM extraction; `False` falls back to built-in loader |
+| `SEARCH_ENABLED` | `bool` | `True` | Enable the search tool and include it in the system prompt |
+| `SCHOLAR_ENABLED` | `bool` | `True` | Enable the google_scholar tool and include it in the system prompt |
+| `VISIT_ENABLED` | `bool` | `True` | Enable the visit tool and include it in the system prompt |
+| `AUTO_INSTALL_TOOLS` | `bool` | `True` | Auto-install enabled tool modules into Open WebUI's tool registry on startup |
 | `TEMPERATURE` | `float` | `0.6` | Sampling temperature (0–2) |
 | `TOP_P` | `float` | `0.95` | Nucleus sampling (0–1) |
 | `PRESENCE_PENALTY` | `float` | `1.1` | Presence penalty (0–2) |

@@ -24,10 +24,12 @@ src/tongyi_deepresearch_openwebui_pipeline/   ← the real package
 │   └── pipe.py                               ← main pipe implementation
 └── tools/
     ├── search_tool.py                        ← search tool (raw snippets)
+    ├── scholar_tool.py                       ← Google Scholar tool
     └── visit_tool.py                         ← visit/extraction tool
 
 tongyi_deepresearch_pipe.py                   ← shim: re-exports Pipe
 search_tool.py                                ← shim: re-exports Tools
+scholar_tool.py                               ← shim: re-exports Tools
 visit_tool.py                                 ← shim: re-exports Tools
 ```
 
@@ -50,9 +52,10 @@ loop that alternates between model generation and tool execution:
    `PythonInterpreter` format that wraps code in `<code>` tags.
 
 4. **`_execute_tool()`** routes the parsed call to the appropriate handler —
-   `_execute_search` for search/google_scholar, the `visit_tool` import (or
-   the built-in fallback) for visit, or a graceful error string for
-   unexecutable tools like `PythonInterpreter` and `parse_file`.
+   `_execute_search` for search, `_execute_scholar` for google_scholar,
+   `_execute_visit` for visit, or a graceful error string for unexecutable
+   tools like `PythonInterpreter` and `parse_file`. Each tool branch checks
+   whether the tool is enabled via its valve before executing.
 
 5. The result is injected back as a **`user` message** wrapped in
    `<tool_response>` tags, and the loop continues.
@@ -99,9 +102,9 @@ respected by any new tool handler.
 
 | Tool | Handler | Notes |
 |---|---|---|
-| `search` | `search_tool.Tools.search()` | Returns raw snippets matching upstream training format via Open WebUI `search_web()` |
-| `visit` | `visit_tool.Tools.visit()` or built-in `get_content_from_url()` | Controlled by `VISIT_TOOL_ENABLED` valve |
-| `google_scholar` | `search_tool.Tools.google_scholar()` | Prefixes queries with `"academic research: "` and uses scholar-specific header |
+| `search` | `search_tool.Tools.search()` | Controlled by `SEARCH_ENABLED`; returns raw snippets matching upstream training format |
+| `visit` | `visit_tool.Tools.visit()` or built-in `get_content_from_url()` | Controlled by `VISIT_ENABLED` |
+| `google_scholar` | `scholar_tool.Tools.google_scholar()` | Controlled by `SCHOLAR_ENABLED`; self-contained tool with `"academic research: "` prefix |
 | `PythonInterpreter` | Graceful error string | Not executable in this environment |
 | `parse_file` | Graceful error string | Not executable in this environment |
 
@@ -124,14 +127,31 @@ snippet text
 snippet text
 ```
 
-Multiple queries are separated by `\n=======\n`. Google Scholar results use the
-header `A Google scholar for '{query}' found {N} results:` with
-`## Scholar Results`.
+Multiple queries are separated by `\n=======\n`.
 
 The tool delegates to Open WebUI's built-in `search_web()` for the actual HTTP
 requests. The pipe passes `request` and `user` objects so the tool can call
-`search_web` without needing its own API credentials. The pipe imports the
-search tool directly from the package — there is no fallback path.
+`search_web` without needing its own API credentials.
+
+## Scholar Tool Deep-Dive (`src/tongyi_deepresearch_openwebui_pipeline/tools/scholar_tool.py`)
+
+The scholar tool is a **self-contained** module (no imports from `search_tool`)
+that duplicates the `_search_single_query` logic with scholar-specific formatting,
+matching the upstream `tool_scholar.py`.
+
+**Output format (per query):**
+
+```
+A Google scholar for '{query}' found {N} results:
+
+## Scholar Results
+1. [Title](link)
+snippet text
+```
+
+Each query is automatically prefixed with `"academic research: "` before being
+sent to Open WebUI's `search_web()`. Multiple queries are separated by
+`\n=======\n`.
 
 ## Visit Tool Deep-Dive (`src/tongyi_deepresearch_openwebui_pipeline/tools/visit_tool.py`)
 
@@ -172,11 +192,28 @@ locates the visit tool's `Tools` class using four strategies, tried in order:
 All four strategies are wrapped in `try`/`except` so the resolver degrades
 gracefully in non-Open-WebUI environments.
 
-**Note:** When `VISIT_TOOL_ENABLED=True`, the pipe's `_execute_tool` method
+**Note:** When `VISIT_ENABLED=True`, the pipe's `_execute_visit` method
 automatically propagates `OPENROUTER_API_KEY` into the visit tool's
 `SUMMARY_MODEL_API_KEY` valve, so users only need to configure one API key in
-most setups. The search tool does not require an API key — it uses Open WebUI's
-built-in `search_web()` via the `request`/`user` context passed by the pipe.
+most setups. The search and scholar tools do not require an API key — they use
+Open WebUI's built-in `search_web()` via the `request`/`user` context passed by
+the pipe.
+
+## Dynamic Tools and Auto-Install
+
+Each tool can be individually enabled or disabled via pipe valves:
+`SEARCH_ENABLED`, `SCHOLAR_ENABLED`, `VISIT_ENABLED`. When a tool is disabled:
+
+1. Its definition is excluded from the system prompt's `<tools>` block.
+2. If the model calls it anyway, `_execute_tool` returns an error listing
+   available tools.
+
+When `AUTO_INSTALL_TOOLS=True` (default), the pipe auto-installs enabled tool
+modules into Open WebUI's tool registry on startup (`pipes()` entry point). It
+reads tool source code from the installed package via `importlib.resources` and
+uses `Tools.insert_new_tool()` / `Tools.update_tool_by_id()` from
+`open_webui.models.tools`. Preferred tool IDs: `deepresearch-search`,
+`deepresearch-scholar`, `deepresearch-visit`.
 
 ## Development Workflow
 
@@ -226,8 +263,9 @@ pytest
    ```
 
 3. The `release.yml` workflow runs automatically, building the wheel and sdist
-   via hatchling and publishing a GitHub Release with four assets: the wheel,
-   the sdist, `tongyi_deepresearch_pipe.py`, and `visit_tool.py`.
+   via hatchling and publishing a GitHub Release with assets: the wheel,
+   the sdist, `tongyi_deepresearch_pipe.py`, `search_tool.py`,
+   `scholar_tool.py`, and `visit_tool.py`.
 
 ## Adding a New Tool — Step-by-Step Guide
 

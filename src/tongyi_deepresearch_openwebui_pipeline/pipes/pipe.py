@@ -28,6 +28,7 @@ from collections.abc import (  # noqa: TC003 — runtime needed by Open WebUI
     Callable,
 )
 from datetime import date
+from typing import ClassVar
 from uuid import uuid4
 
 import httpx
@@ -53,7 +54,7 @@ _SEARCH_TOOL_DEF = {
     "function": {
         "name": "search",
         "description": (
-            "Perform Kagi web searches then returns"
+            "Perform web searches then returns"
             " a string of the top search results."
             " Accepts multiple queries."
         ),
@@ -272,13 +273,25 @@ class Pipe:
             ge=5000,
             description=("Maximum characters kept from a fetched page"),
         )
-        VISIT_TOOL_ENABLED: bool = Field(
+        SEARCH_ENABLED: bool = Field(
+            default=True,
+            description=("Enable the search tool and include it in the system prompt."),
+        )
+        SCHOLAR_ENABLED: bool = Field(
             default=True,
             description=(
-                "Use the standalone visit_tool for richer"
-                " LLM-based extraction. When False, falls"
-                " back to the built-in Open WebUI content"
-                " loader."
+                "Enable the google_scholar tool and include it in the system prompt."
+            ),
+        )
+        VISIT_ENABLED: bool = Field(
+            default=True,
+            description=("Enable the visit tool and include it in the system prompt."),
+        )
+        AUTO_INSTALL_TOOLS: bool = Field(
+            default=True,
+            description=(
+                "Auto-install enabled tool modules into"
+                " Open WebUI's tool registry on startup."
             ),
         )
         TEMPERATURE: float = Field(default=0.6, ge=0.0, le=2.0)
@@ -334,6 +347,8 @@ class Pipe:
 
     def pipes(self) -> list:
         """Return the list of available pipe definitions."""
+        if self.valves.AUTO_INSTALL_TOOLS:
+            self._auto_install_tools()
         return [
             {
                 "id": "tongyi-deepresearch",
@@ -355,14 +370,145 @@ class Pipe:
         ]
 
     # ------------------------------------------------------------------ #
+    #  Tool auto-install
+    # ------------------------------------------------------------------ #
+
+    _TOOL_REGISTRY: ClassVar[list[dict]] = [
+        {
+            "id": "deepresearch-search",
+            "name": "DeepResearch Search Tool",
+            "module": "search_tool.py",
+            "description": (
+                "Searches the web via Open WebUI's"
+                " built-in search engine, formatted to"
+                " match DeepResearch training output."
+            ),
+            "valve": "SEARCH_ENABLED",
+            "specs": [_SEARCH_TOOL_DEF],
+        },
+        {
+            "id": "deepresearch-scholar",
+            "name": "DeepResearch Scholar Tool",
+            "module": "scholar_tool.py",
+            "description": (
+                "Searches academic literature via Open"
+                " WebUI's built-in search with an"
+                " 'academic research' prefix, formatted"
+                " to match DeepResearch training output."
+            ),
+            "valve": "SCHOLAR_ENABLED",
+            "specs": [_SCHOLAR_TOOL_DEF],
+        },
+        {
+            "id": "deepresearch-visit",
+            "name": "DeepResearch Visit Tool",
+            "module": "visit_tool.py",
+            "description": (
+                "Visits URLs and extracts structured"
+                " evidence via a dedicated extractor"
+                " LLM call."
+            ),
+            "valve": "VISIT_ENABLED",
+            "specs": [_VISIT_TOOL_DEF],
+        },
+    ]
+
+    def _auto_install_tools(self) -> None:
+        """Auto-install enabled tool modules into Open WebUI's tool DB."""
+        for entry in self._TOOL_REGISTRY:
+            if not getattr(self.valves, entry["valve"], False):
+                continue
+            try:
+                self._ensure_tool_installed(entry)
+            except Exception:
+                logger.debug(
+                    "Auto-install failed for %s",
+                    entry["id"],
+                    exc_info=True,
+                )
+
+    def _ensure_tool_installed(self, entry: dict) -> None:
+        """Check if a tool exists in the DB; create/update if needed."""
+        try:
+            from open_webui.models.tools import (  # type: ignore[import-not-found]  # noqa: PLC0415
+                ToolForm,
+                ToolMeta,
+            )
+            from open_webui.models.tools import (  # type: ignore[import-not-found]  # noqa: PLC0415
+                Tools as ToolsDB,
+            )
+        except ImportError:
+            return
+
+        tool_id: str = entry["id"]
+        existing = ToolsDB.get_tool_by_id(tool_id)
+
+        source = self._read_tool_source(entry["module"])
+        if not source:
+            return
+
+        meta = ToolMeta(description=entry["description"])
+
+        if existing is None:
+            form = ToolForm(
+                id=tool_id,
+                name=entry["name"],
+                content=source,
+                meta=meta,
+            )
+            ToolsDB.insert_new_tool(
+                user_id="",
+                form_data=form,
+                specs=entry["specs"],
+            )
+            logger.info("Auto-installed tool: %s", tool_id)
+        elif existing.content != source:
+            ToolsDB.update_tool_by_id(
+                tool_id,
+                {
+                    "content": source,
+                    "name": entry["name"],
+                    "meta": meta.model_dump(),
+                },
+            )
+            logger.info("Auto-updated tool: %s", tool_id)
+
+    @staticmethod
+    def _read_tool_source(module_name: str) -> str | None:
+        """Read tool source code from the installed package."""
+        try:
+            from importlib.resources import (  # noqa: PLC0415
+                files as _files,
+            )
+
+            resource = _files("tongyi_deepresearch_openwebui_pipeline.tools").joinpath(
+                module_name
+            )
+            return resource.read_text(encoding="utf-8")  # type: ignore[union-attr]
+        except Exception:
+            logger.debug(
+                "Could not read tool source for %s",
+                module_name,
+                exc_info=True,
+            )
+            return None
+
+    # ------------------------------------------------------------------ #
     #  System-prompt builder
     # ------------------------------------------------------------------ #
 
     def _build_system_prompt(self) -> str:
         today = date.today()  # noqa: DTZ011
-        tools_json = "\n".join(
-            json.dumps(t, ensure_ascii=False) for t in _TOOL_DEFINITIONS
-        )
+        tool_defs: list[dict] = []
+        if self.valves.SEARCH_ENABLED:
+            tool_defs.append(_SEARCH_TOOL_DEF)
+        if self.valves.VISIT_ENABLED:
+            tool_defs.append(_VISIT_TOOL_DEF)
+        if self.valves.SCHOLAR_ENABLED:
+            tool_defs.append(_SCHOLAR_TOOL_DEF)
+        if not tool_defs:
+            tool_defs = list(_TOOL_DEFINITIONS)
+        tools_json = "\n".join(json.dumps(t, ensure_ascii=False) for t in tool_defs)
         prompt = _SYSTEM_PROMPT_TEMPLATE.format(
             human_date=today.strftime("%A, %B %d, %Y"),
             iso_date=today.isoformat(),
@@ -560,7 +706,7 @@ class Pipe:
                 obj = parser(raw)
                 if isinstance(obj, dict) and "name" in obj:
                     return obj
-            except (json.JSONDecodeError, ValueError):
+            except json.JSONDecodeError, ValueError:
                 continue
 
         return None
@@ -605,12 +751,46 @@ class Pipe:
     #  Tool router                                                         #
     # ================================================================== #
 
+    def _enabled_tool_names(self) -> list[str]:
+        """Return the names of currently enabled tools."""
+        names: list[str] = []
+        if self.valves.SEARCH_ENABLED:
+            names.append("search")
+        if self.valves.VISIT_ENABLED:
+            names.append("visit")
+        if self.valves.SCHOLAR_ENABLED:
+            names.append("google_scholar")
+        return names
+
+    _UNAVAILABLE_TOOLS: ClassVar[dict[str, str]] = {
+        "PythonInterpreter": (
+            "[PythonInterpreter] Code execution is not"
+            " available in this environment. Please"
+            " reason through the computation manually"
+            " or reformulate your approach using"
+            " search."
+        ),
+        "parse_file": (
+            "[parse_file] File parsing is not available in this environment."
+        ),
+    }
+
     async def _execute_tool(
         self,
         name: str,
         arguments: dict,
     ) -> str:
         """Route a parsed tool call to the appropriate handler."""
+        if name in self._UNAVAILABLE_TOOLS:
+            return self._UNAVAILABLE_TOOLS[name]
+
+        enabled = self._enabled_tool_names()
+        if name in {"search", "visit", "google_scholar"} and name not in enabled:
+            return (
+                f"[{name}] This tool is not enabled."
+                f" Available tools: {', '.join(enabled)}"
+            )
+
         if name == "search":
             queries = arguments.get("query", [])
             if isinstance(queries, str):
@@ -628,19 +808,7 @@ class Pipe:
             queries = arguments.get("query", [])
             if isinstance(queries, str):
                 queries = [queries]
-            return await self._execute_search(queries, scholar=True)
-
-        if name == "PythonInterpreter":
-            return (
-                "[PythonInterpreter] Code execution is not"
-                " available in this environment. Please"
-                " reason through the computation manually"
-                " or reformulate your approach using"
-                " search."
-            )
-
-        if name == "parse_file":
-            return "[parse_file] File parsing is not available in this environment."
+            return await self._execute_scholar(queries)
 
         return f"[Error] Unknown tool: {name}"
 
@@ -648,7 +816,7 @@ class Pipe:
 
     async def _execute_visit(self, urls: list[str], goal: str) -> str:
         """Execute the visit tool using the configured backend."""
-        if self.valves.VISIT_TOOL_ENABLED and self.valves.OPENROUTER_API_KEY:
+        if self.valves.VISIT_ENABLED and self.valves.OPENROUTER_API_KEY:
             return await self._execute_visit_with_tool(urls, goal)
         return await self._execute_visit_builtin(urls, goal)
 
@@ -714,7 +882,7 @@ class Pipe:
         if VisitTools is None:
             return (
                 "[visit] visit_tool module not found —"
-                " disable VISIT_TOOL_ENABLED or install"
+                " disable VISIT_ENABLED or install"
                 " visit_tool.py."
             )
 
@@ -836,8 +1004,6 @@ class Pipe:
     async def _execute_search(
         self,
         queries: list[str],
-        *,
-        scholar: bool = False,
     ) -> str:
         """Execute search via the standalone search_tool module."""
         SearchTools = self._resolve_search_tools_class()  # noqa: N806
@@ -859,9 +1025,101 @@ class Pipe:
                 d.get("done", False),
             )
 
-        if scholar:
-            return await search_tools.google_scholar(queries, _search_emitter)
         return await search_tools.search(queries, _search_emitter)
+
+    # ================================================================== #
+    #  Scholar tool                                                        #
+    # ================================================================== #
+
+    @staticmethod
+    def _resolve_scholar_tools_class() -> type | None:
+        """Locate the scholar-tool ``Tools`` class across install methods.
+
+        Tries four strategies in order:
+        1. Package import (pip-installed).
+        2. Direct module import (``scholar_tool.py`` on ``sys.path``).
+        3. Scan ``sys.modules`` for an Open WebUI-loaded tool module
+           (stored as ``tool_{id}``).
+        4. Load from the Open WebUI database via
+           ``load_tool_module_by_id``.
+        """
+        import sys as _sys  # noqa: PLC0415
+
+        try:
+            from tongyi_deepresearch_openwebui_pipeline.tools.scholar_tool import (  # noqa: PLC0415
+                Tools,
+            )
+
+            return Tools  # type: ignore[no-any-return]
+        except ImportError:
+            pass
+
+        try:
+            from scholar_tool import (  # type: ignore[import-not-found]  # noqa: PLC0415
+                Tools,
+            )
+
+            return Tools  # type: ignore[no-any-return]
+        except ImportError:
+            pass
+
+        for _name, mod in _sys.modules.items():
+            if not _name.startswith("tool_"):
+                continue
+            cls = getattr(mod, "Tools", None)
+            if cls is not None and callable(getattr(cls, "google_scholar", None)):
+                return cls  # type: ignore[no-any-return]
+
+        try:
+            from open_webui.models.tools import (  # type: ignore[import-not-found]  # noqa: PLC0415
+                Tools as ToolsDB,
+            )
+            from open_webui.utils.plugin import (  # type: ignore[import-not-found]  # noqa: PLC0415
+                load_tool_module_by_id,
+            )
+
+            for tool in ToolsDB.get_tools():
+                if (
+                    "class Tools" in tool.content
+                    and "def google_scholar" in tool.content
+                ):
+                    instance, _ = load_tool_module_by_id(tool.id)
+                    return type(instance)
+        except Exception:  # noqa: S110
+            pass
+
+        return None
+
+    async def _execute_scholar(
+        self,
+        queries: list[str],
+    ) -> str:
+        """Execute Google Scholar search via the standalone scholar_tool module."""
+        ScholarTools = self._resolve_scholar_tools_class()  # noqa: N806
+        if ScholarTools is None:
+            return (
+                "[google_scholar] scholar_tool module not found"
+                " — install scholar_tool.py."
+            )
+
+        scholar_tools = ScholarTools()
+        scholar_tools.request = self._request
+        scholar_tools.user = self._user
+        scholar_tools.valves.MAX_RESULTS_PER_QUERY = (
+            self.valves.SEARCH_RESULTS_PER_QUERY
+        )
+        scholar_tools.valves.MAX_QUERIES_PER_SEARCH = self.valves.MAX_QUERIES_PER_SEARCH
+
+        pipe_self = self
+
+        async def _scholar_emitter(event: dict) -> None:
+            d = event.get("data", {})
+            await pipe_self._emit_status(
+                d.get("description", ""),
+                d.get("done", False),
+            )
+
+        return await scholar_tools.google_scholar(queries, _scholar_emitter)
 
     # ---- tool-call display card -------------------------------------- #
 
