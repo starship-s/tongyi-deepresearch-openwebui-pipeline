@@ -189,6 +189,7 @@ class _CostTracker:
         self.output_tokens = 0
         self.cost = 0.0
         self.calls = 0
+        self.has_estimates = False
 
     def update(self, usage: dict | None) -> None:
         """Record usage from one model call."""
@@ -199,10 +200,14 @@ class _CostTracker:
         self.output_tokens += usage.get("completion_tokens", 0)
         if "cost" in usage:
             self.cost += usage["cost"]
+        if usage.get("estimated"):
+            self.has_estimates = True
 
     def summary(self, prefix: str = "") -> str:
         """Format a human-readable cost summary string."""
         tok = f"{self.input_tokens + self.output_tokens:,} tokens"
+        if self.has_estimates:
+            tok += " (est.)"
         if self.cost > 0:
             cost = (
                 f"${self.cost:.4f}"
@@ -729,6 +734,7 @@ class Pipe:
             "model": self.valves.MODEL_ID,
             "messages": messages,
             "stream": True,
+            "stream_options": {"include_usage": True},
             "temperature": self.valves.TEMPERATURE,
             "top_p": self.valves.TOP_P,
             "presence_penalty": self.valves.PRESENCE_PENALTY,
@@ -846,7 +852,29 @@ class Pipe:
         if emit_thinking and think_state["open"] and not think_state["closed"]:
             await self._emit_message(THINK_CLOSE_TAG)
 
+        if usage is None:
+            usage = self._estimate_usage_from_chars(payload, reasoning, content)
+
         return reasoning, content, usage
+
+    @staticmethod
+    def _estimate_usage_from_chars(payload: dict, reasoning: str, content: str) -> dict:
+        """Estimate token usage from character counts when provider reports none."""
+        input_chars = 0
+        for m in payload.get("messages", []):
+            c = m.get("content", "")
+            if isinstance(c, str):
+                input_chars += len(c)
+            elif isinstance(c, list):
+                for b in c:
+                    if isinstance(b, dict) and "text" in b:
+                        input_chars += len(b["text"])
+        output_chars = len(reasoning) + len(content)
+        return {
+            "prompt_tokens": max(1, input_chars // 4),
+            "completion_tokens": max(1, output_chars // 4),
+            "estimated": True,
+        }
 
     @staticmethod
     def _process_sse_chunk(

@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.13] - 2026-02-18
+
+### Fixed
+
+- Token counting now works with NanoGPT and other providers that require
+  `stream_options: {"include_usage": true}` for streaming usage data. Added
+  character-based fallback estimation when the provider reports no usage;
+  estimated counts are labeled with "(est.)" in the status bar.
+
 ## [0.2.12] - 2026-02-18
 
 ### Changed
@@ -148,7 +157,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Pipe delegates `visit` calls to the standalone tool when `VISIT_TOOL_ENABLED=True`.
 - Project is now installable via `pip install` using hatchling.
 
-[Unreleased]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.12...HEAD
+[Unreleased]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.13...HEAD
+[0.2.13]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.12...v0.2.13
 [0.2.12]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.11...v0.2.12
 [0.2.11]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.10...v0.2.11
 [0.2.10]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.9...v0.2.10
