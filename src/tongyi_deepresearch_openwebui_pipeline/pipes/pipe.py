@@ -45,7 +45,8 @@ logger = logging.getLogger(__name__)
 HTTP_OK = 200
 STATUS_PING_INTERVAL_S = 4
 COST_DISPLAY_THRESHOLD = 0.01
-THINKING_PREVIEW_LENGTH = 300
+THINK_OPEN_TAG = "<think>\n"
+THINK_CLOSE_TAG = "\n</think>\n"
 
 # =========================================================================== #
 #  Tool definitions (injected into the system prompt as JSON)                  #
@@ -325,7 +326,11 @@ class Pipe:
         )
         EMIT_THINKING: bool = Field(
             default=True,
-            description=("Show abbreviated model thinking in the status bar"),
+            description=(
+                "Show model thinking as collapsible blocks"
+                " interleaved with tool-call cards in the"
+                " chat message"
+            ),
         )
         SHOW_COST_TRACKING: bool = Field(
             default=True,
@@ -595,17 +600,48 @@ class Pipe:
 
         raise last_exc  # type: ignore[misc]
 
+    async def _emit_reasoning_delta(
+        self,
+        reasoning: str,
+        prev_len: int,
+        content: str,
+        state: dict,
+    ) -> None:
+        """Emit new reasoning tokens wrapped in ``<think>`` tags.
+
+        *state* tracks ``open`` and ``closed`` booleans across calls.
+        """
+        new_text = reasoning[prev_len:]
+        if new_text:
+            if not state["open"]:
+                await self._emit_message(THINK_OPEN_TAG)
+                state["open"] = True
+            await self._emit_message(new_text)
+
+        if state["open"] and not state["closed"] and content:
+            await self._emit_message(THINK_CLOSE_TAG)
+            state["closed"] = True
+
     async def _stream_completion(
         self,
         url: str,
         headers: dict,
         payload: dict,
     ) -> tuple:
-        """Execute the SSE stream and collect the response."""
+        """Execute the SSE stream and collect the response.
+
+        Reasoning tokens are emitted in real-time via ``_emit_message``
+        wrapped in ``<think>`` tags so they interleave correctly with
+        the tool-call cards that follow each model turn.  Content
+        tokens (which may contain ``<tool_call>`` or ``<answer>`` XML)
+        are collected silently for post-processing.
+        """
         reasoning = ""
         content = ""
         usage: dict | None = None
         last_ping = time.time()
+        emit_thinking = self.valves.EMIT_THINKING
+        think_state: dict[str, bool] = {"open": False, "closed": False}
 
         async with (
             httpx.AsyncClient(timeout=httpx.Timeout(600.0, connect=30.0)) as client,
@@ -630,14 +666,23 @@ class Pipe:
                 except json.JSONDecodeError:
                     continue
 
+                prev_reasoning_len = len(reasoning)
                 reasoning, content, usage = self._process_sse_chunk(
                     chunk, reasoning, content, usage
                 )
+
+                if emit_thinking:
+                    await self._emit_reasoning_delta(
+                        reasoning, prev_reasoning_len, content, think_state
+                    )
 
                 if time.time() - last_ping > STATUS_PING_INTERVAL_S:
                     n = len(reasoning) + len(content)
                     await self._emit_status(f"Generating\u2026 ({n:,} chars received)")
                     last_ping = time.time()
+
+        if emit_thinking and think_state["open"] and not think_state["closed"]:
+            await self._emit_message(THINK_CLOSE_TAG)
 
         return reasoning, content, usage
 
@@ -708,7 +753,7 @@ class Pipe:
                 obj = parser(raw)
                 if isinstance(obj, dict) and "name" in obj:
                     return obj
-            except (json.JSONDecodeError, ValueError):
+            except json.JSONDecodeError, ValueError:
                 continue
 
         return None
@@ -1276,7 +1321,12 @@ class Pipe:
             reasoning, _content, full = model_result
             messages.append({"role": "assistant", "content": full})
 
-            await self._show_thinking_preview(full, reasoning, round_num)
+            if self.valves.EMIT_THINKING and not reasoning:
+                thinking = self._extract_thinking(full)
+                if thinking:
+                    await self._emit_message(
+                        THINK_OPEN_TAG + thinking + THINK_CLOSE_TAG
+                    )
 
             action = await self._process_round(full, messages, tracker, round_num)
             if action is not None:
@@ -1303,20 +1353,6 @@ class Pipe:
 
         full = self._reconstruct_full_turn(reasoning, content)
         return reasoning, content, full
-
-    async def _show_thinking_preview(
-        self, full: str, reasoning: str, round_num: int
-    ) -> None:
-        """Emit an abbreviated thinking preview to the status bar."""
-        if not self.valves.EMIT_THINKING:
-            return
-        thinking = self._extract_thinking(full) or reasoning
-        if not thinking:
-            return
-        preview = thinking[:THINKING_PREVIEW_LENGTH].replace("\n", " ").strip()
-        if len(thinking) > THINKING_PREVIEW_LENGTH:
-            preview += "\u2026"
-        await self._emit_status(f"Round {round_num} thinking: {preview}")
 
     async def _apply_context_guard(self, messages: list[dict]) -> None:
         """Inject a wrap-up request when the context budget is nearly exhausted."""

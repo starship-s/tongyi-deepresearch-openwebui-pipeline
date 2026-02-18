@@ -43,9 +43,17 @@ loop that alternates between model generation and tool execution:
    set, it is prepended before the built-in prompt.
 
 2. **`_call_llm()`** streams a chat completion from the configured API endpoint.
-   Reasoning tokens arriving in a dedicated provider field are separated from
-   content and wrapped in `<think>` tags so the model's chain-of-thought is
-   preserved but hidden from the final display.
+   During streaming, **`_stream_completion()`** emits reasoning tokens to the
+   UI in real-time via `_emit_message`, wrapped in `<think>` tags.  This
+   produces collapsible "Thought for _N_ seconds" blocks that interleave
+   correctly with tool-call cards.  Content tokens (which may contain
+   `<tool_call>` or `<answer>` XML) are collected silently for
+   post-processing.  When the provider uses a dedicated reasoning field
+   (`reasoning` / `reasoning_content` in the SSE delta), tokens are streamed
+   directly.  When thinking is embedded in the `content` field as `<think>`
+   tags instead (no separate reasoning field), the loop extracts and emits the
+   thinking block after the call completes.  Controlled by the `EMIT_THINKING`
+   valve.
 
 3. **`_extract_tool_call()`** parses the first `<tool_call>` JSON block from
    the assistant response. It handles standard JSON as well as the special
@@ -57,8 +65,10 @@ loop that alternates between model generation and tool execution:
    tools like `PythonInterpreter` and `parse_file`. Each tool branch checks
    whether the tool is enabled via its valve before executing.
 
-5. The result is injected back as a **`user` message** wrapped in
-   `<tool_response>` tags, and the loop continues.
+5. **`_handle_tool_call()`** emits a collapsible tool-call card to the UI via
+   `_emit_message` (using `<details type="tool_calls">`), then injects the
+   result back as a **`user` message** wrapped in `<tool_response>` tags, and
+   the loop continues.
 
 6. **`_extract_answer()`** detects `<answer>` tags in the model's output to
    terminate the loop and return the final answer to the user.
@@ -67,6 +77,20 @@ loop that alternates between model generation and tool execution:
    before the model's context window is exhausted. When the total character
    count of all messages exceeds this threshold, a special user message is
    appended asking the model to wrap up immediately.
+
+The final message displayed to the user is assembled incrementally: thinking
+blocks and tool cards are emitted via `_emit_message` during the loop, and
+the final answer text is returned from `pipe()`.  Open WebUI concatenates all
+emissions with the return value, producing interleaved output:
+
+```
+Thought for 6 seconds      (collapsible <think> block)
+View Result from search     (tool-call card)
+Thought for 2 seconds      (collapsible <think> block)
+View Result from visit      (tool-call card)
+Thought for 4 seconds      (collapsible <think> block)
+Final answer text…
+```
 
 ## XML Tool Contract
 
