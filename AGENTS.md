@@ -278,7 +278,13 @@ pytest
 
 ### Releasing
 
-1. Bump `version` in `pyproject.toml` and add an entry to `CHANGELOG.md`.
+1. Bump `version` in **all** of the following locations and add an entry to
+   `CHANGELOG.md`:
+   - `pyproject.toml` → `version = "X.Y.Z"`
+   - `pipes/tongyi_deepresearch_pipe.py` → docstring `version:` field
+   - `pipes/tongyi_deepresearch_pipe.py` → `_VERSION = "X.Y.Z"` constant
+   - Tool files (`tools/deepresearch_*.py`) → docstring `version:` field
+     (only if the tool itself changed).
 2. Commit, tag, and push:
 
    ```bash
