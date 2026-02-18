@@ -26,7 +26,7 @@ jobs:
           name: ${{ github.ref_name }}
           body_path: release_notes.md
           files: |
-            tongyi_deepresearch_pipe.py
-            search_tool.py
-            scholar_tool.py
-            visit_tool.py
+            src/tongyi_deepresearch_openwebui_pipeline/pipes/pipe.py
+            src/tongyi_deepresearch_openwebui_pipeline/tools/search_tool.py
+            src/tongyi_deepresearch_openwebui_pipeline/tools/scholar_tool.py
+            src/tongyi_deepresearch_openwebui_pipeline/tools/visit_tool.py

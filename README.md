@@ -83,12 +83,12 @@ sequenceDiagram
 
 1. Download the four `.py` files from the latest
    [GitHub Release](https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/releases/latest):
-   - **`tongyi_deepresearch_pipe.py`** — the pipe (import as a Function)
+   - **`pipe.py`** — the pipe (import as a Function)
    - **`search_tool.py`** — web search tool
    - **`scholar_tool.py`** — Google Scholar tool
    - **`visit_tool.py`** — URL visit / extraction tool
 2. In Open WebUI, go to **Workspace → Functions**, click **Import** (or **+**
-   → **Import**), and import `tongyi_deepresearch_pipe.py`.
+   → **Import**), and import `pipe.py`.
 3. Go to **Workspace → Tools** and import `search_tool.py`,
    `scholar_tool.py`, and `visit_tool.py`.
 4. Open the pipe's **Valves** and set your `API_KEY`.

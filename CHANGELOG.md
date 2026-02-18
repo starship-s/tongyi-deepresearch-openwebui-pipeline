@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.5] - 2026-02-18
+
+### Removed
+
+- Root-level shim files (`tongyi_deepresearch_pipe.py`, `search_tool.py`,
+  `scholar_tool.py`, `visit_tool.py`). The nested source files under `src/`
+  already contain Open WebUI metadata and can be imported directly.
+
+### Changed
+
+- Release assets now point to the source files under
+  `src/tongyi_deepresearch_openwebui_pipeline/` instead of the deleted shims.
+
 ## [0.2.4] - 2026-02-18
 
 ### Fixed
@@ -53,7 +66,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Pipe delegates `visit` calls to the standalone tool when `VISIT_TOOL_ENABLED=True`.
 - Project is now installable via `pip install` using hatchling.
 
-[Unreleased]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.4...HEAD
+[Unreleased]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.5...HEAD
+[0.2.5]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.4...v0.2.5
 [0.2.4]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.0...v0.2.3
 [0.2.0]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/releases/tag/v0.2.0

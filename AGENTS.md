@@ -12,13 +12,12 @@ here.
 ## Project Layout
 
 The project uses a standard `src/` layout so it is installable as a Python
-package via `pip install -e ".[dev]"`. The root-level `tongyi_deepresearch_pipe.py`
-and `visit_tool.py` are **thin shims** that re-export from the package — they
-exist solely for Open WebUI compatibility (which loads pipes/tools as individual
-files).
+package via `pip install -e ".[dev]"`. Each source file includes Open WebUI
+metadata docstrings and can be imported directly into Open WebUI as a
+Function (pipe) or Tool.
 
 ```
-src/tongyi_deepresearch_openwebui_pipeline/   ← the real package
+src/tongyi_deepresearch_openwebui_pipeline/
 ├── __init__.py
 ├── pipes/
 │   └── pipe.py                               ← main pipe implementation
@@ -26,11 +25,6 @@ src/tongyi_deepresearch_openwebui_pipeline/   ← the real package
     ├── search_tool.py                        ← search tool (raw snippets)
     ├── scholar_tool.py                       ← Google Scholar tool
     └── visit_tool.py                         ← visit/extraction tool
-
-tongyi_deepresearch_pipe.py                   ← shim: re-exports Pipe
-search_tool.py                                ← shim: re-exports Tools
-scholar_tool.py                               ← shim: re-exports Tools
-visit_tool.py                                 ← shim: re-exports Tools
 ```
 
 ## ReAct Loop (`src/tongyi_deepresearch_openwebui_pipeline/pipes/pipe.py`)
@@ -287,9 +281,9 @@ pytest
    ```
 
 3. The `release.yml` workflow runs automatically, building the wheel and sdist
-   via hatchling and publishing a GitHub Release with assets: the wheel,
-   the sdist, `tongyi_deepresearch_pipe.py`, `search_tool.py`,
-   `scholar_tool.py`, and `visit_tool.py`.
+   via hatchling and publishing a GitHub Release with assets: `pipes/pipe.py`,
+   `tools/search_tool.py`, `tools/scholar_tool.py`, and
+   `tools/visit_tool.py`.
 
 ## Adding a New Tool — Step-by-Step Guide
 
