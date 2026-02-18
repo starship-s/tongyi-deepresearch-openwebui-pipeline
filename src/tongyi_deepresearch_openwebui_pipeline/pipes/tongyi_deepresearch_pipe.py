@@ -300,6 +300,13 @@ class Pipe:
                 " Open WebUI's tool registry on startup."
             ),
         )
+        AUTO_INSTALL_MODEL_METADATA: bool = Field(
+            default=True,
+            description=(
+                "Auto-install model metadata (icon, description)"
+                " into Open WebUI's model registry on startup."
+            ),
+        )
         TEMPERATURE: float = Field(default=0.6, ge=0.0, le=2.0)
         TOP_P: float = Field(default=0.95, ge=0.0, le=1.0)
         PRESENCE_PENALTY: float = Field(default=1.1, ge=0.0, le=2.0)
@@ -359,6 +366,7 @@ class Pipe:
         """Return the list of available pipe definitions."""
         if self.valves.AUTO_INSTALL_TOOLS:
             self._auto_install_tools()
+        if self.valves.AUTO_INSTALL_MODEL_METADATA:
             self._auto_install_model_metadata()
         return [
             {
@@ -572,10 +580,10 @@ class Pipe:
                     is_active=True,
                     access_control=None,
                 )
-                Models.insert_new_model(form_data=form, user_id="")
+                Models.insert_new_model(form, user_id="")
                 logger.info("Auto-installed model metadata: %s", model_id)
             except Exception:
-                logger.debug(
+                logger.warning(
                     "Could not auto-install model metadata for %s",
                     model_id,
                     exc_info=True,
@@ -611,7 +619,7 @@ class Pipe:
             Models.update_model_by_id(model_id, payload)
             logger.info("Auto-updated model metadata: %s", model_id)
         except Exception:
-            logger.debug(
+            logger.warning(
                 "Could not auto-update model metadata for %s",
                 model_id,
                 exc_info=True,
