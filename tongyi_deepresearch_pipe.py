@@ -119,6 +119,13 @@ class Pipe:
             ge=5000,
             description="Maximum characters kept from a fetched page",
         )
+        VISIT_TOOL_ENABLED: bool = Field(
+            default=True,
+            description=(
+                "Use the standalone visit_tool for richer LLM-based extraction. "
+                "When False, falls back to the built-in Open WebUI content loader."
+            ),
+        )
         TEMPERATURE: float = Field(default=0.6, ge=0.0, le=2.0)
         TOP_P: float = Field(default=0.95, ge=0.0, le=1.0)
         PRESENCE_PENALTY: float = Field(default=1.1, ge=0.0, le=2.0)
@@ -377,7 +384,74 @@ class Pipe:
             if isinstance(urls, str):
                 urls = [urls]
             goal = arguments.get("goal", "Extract relevant information")
-            return await self._execute_visit(urls, goal, emit_status)
+
+            if self.valves.VISIT_TOOL_ENABLED and self.valves.OPENROUTER_API_KEY:
+                try:
+                    from visit_tool import Tools as VisitTools
+                except ImportError:
+                    return (
+                        "[visit] visit_tool module not found — "
+                        "disable VISIT_TOOL_ENABLED or install visit_tool.py."
+                    )
+
+                visit_tools = VisitTools()
+                visit_tools.valves.SUMMARY_MODEL_API_KEY = self.valves.OPENROUTER_API_KEY
+                visit_tools.valves.SUMMARY_MODEL_BASE_URL = self.valves.OPENROUTER_BASE_URL
+                visit_tools.valves.MAX_PAGE_TOKENS = self.valves.MAX_PAGE_LENGTH
+
+                async def _visit_emitter(event: dict):
+                    d = event.get("data", {})
+                    await emit_status(d.get("description", ""), d.get("done", False))
+
+                return await visit_tools.visit(urls, goal, _visit_emitter)
+
+            from open_webui.retrieval.utils import get_content_from_url
+
+            if len(urls) == 1:
+                await emit_status(f"Visiting: {urls[0]}")
+            else:
+                await emit_status(f"Visiting {len(urls)} pages concurrently…")
+
+            max_len = self.valves.MAX_PAGE_LENGTH
+
+            async def _fetch_one(u: str) -> str:
+                try:
+                    content, _title = await asyncio.to_thread(
+                        get_content_from_url, self._request, u,
+                    )
+                    if not content or not content.strip():
+                        return (
+                            f"The useful information in {u} for user goal "
+                            f"{goal} as follows:\n\n"
+                            f"Evidence in page:\n"
+                            f"The provided webpage content could not be accessed. "
+                            f"Error: Empty page content\n\n"
+                            f"Summary:\n"
+                            f"The webpage content could not be processed.\n"
+                        )
+                    if len(content) > max_len:
+                        content = content[:max_len] + "\n…[content truncated]"
+                    return (
+                        f"The useful information in {u} for user goal "
+                        f"{goal} as follows:\n\n"
+                        f"Evidence in page:\n{content}\n\n"
+                        f"Summary:\nRaw page content provided above for analysis.\n"
+                    )
+                except Exception as exc:
+                    return (
+                        f"The useful information in {u} for user goal "
+                        f"{goal} as follows:\n\n"
+                        f"Evidence in page:\n"
+                        f"The provided webpage content could not be accessed. "
+                        f"Error: {exc}\n\n"
+                        f"Summary:\n"
+                        f"The webpage content could not be processed.\n"
+                    )
+
+            if len(urls) == 1:
+                return await _fetch_one(urls[0])
+            results = await asyncio.gather(*(_fetch_one(u) for u in urls))
+            return "\n=======\n".join(results)
 
         if name == "google_scholar":
             queries = arguments.get("query", [])
@@ -464,73 +538,6 @@ class Pipe:
             f"{len(snippets)} results:\n\n## Web Results\n"
         )
         return header + "\n\n".join(snippets)
-
-    # ================================================================== #
-    #  Visit tool — concurrent fetches via Open WebUI content loader     #
-    # ================================================================== #
-
-    async def _execute_visit(
-        self,
-        urls: List[str],
-        goal: str,
-        emit_status: Callable,
-    ) -> str:
-        """Fetch pages concurrently and return content in the model's expected format."""
-        if len(urls) == 1:
-            await emit_status(f"Visiting: {urls[0]}")
-            return await self._fetch_url(urls[0], goal)
-
-        await emit_status(f"Visiting {len(urls)} pages concurrently…")
-        results = await asyncio.gather(*(self._fetch_url(url, goal) for url in urls))
-
-        return "\n=======\n".join(results)
-
-    async def _fetch_url(self, url: str, goal: str) -> str:
-        """Fetch a single URL via Open WebUI's built-in content loader."""
-        try:
-            from open_webui.retrieval.utils import get_content_from_url
-
-            content, _title = await asyncio.to_thread(
-                get_content_from_url,
-                self._request,
-                url,
-            )
-
-            if not content or not content.strip():
-                return self._fmt_visit_error(url, goal, "Empty page content")
-
-            if len(content) > self.valves.MAX_PAGE_LENGTH:
-                content = (
-                    content[: self.valves.MAX_PAGE_LENGTH] + "\n…[content truncated]"
-                )
-
-            return self._fmt_visit_ok(url, goal, content)
-
-        except Exception as exc:
-            return self._fmt_visit_error(url, goal, str(exc))
-
-    # ---- formatting helpers ------------------------------------------ #
-
-    @staticmethod
-    def _fmt_visit_ok(url: str, goal: str, content: str) -> str:
-        return (
-            f"The useful information in {url} for user goal "
-            f"{goal} as follows:\n\n"
-            f"Evidence in page:\n{content}\n\n"
-            f"Summary:\nRaw page content provided above for analysis.\n"
-        )
-
-    @staticmethod
-    def _fmt_visit_error(url: str, goal: str, error: str) -> str:
-        return (
-            f"The useful information in {url} for user goal "
-            f"{goal} as follows:\n\n"
-            f"Evidence in page:\n"
-            f"The provided webpage content could not be accessed. "
-            f"Error: {error}\n\n"
-            f"Summary:\n"
-            f"The webpage content could not be processed.\n"
-        )
 
     # ---- tool-call display card --------------------------------------- #
 
