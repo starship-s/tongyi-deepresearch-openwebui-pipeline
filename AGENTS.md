@@ -236,8 +236,8 @@ When `AUTO_INSTALL_TOOLS=True` (default), the pipe auto-installs enabled tool
 modules into Open WebUI's tool registry on startup (`pipes()` entry point). It
 reads tool source code from the installed package via `importlib.resources` and
 uses `Tools.insert_new_tool()` / `Tools.update_tool_by_id()` from
-`open_webui.models.tools`. Preferred tool IDs: `deepresearch-search`,
-`deepresearch-scholar`, `deepresearch-visit`.
+`open_webui.models.tools`. Preferred tool IDs: `deepresearch_search_tool`,
+`deepresearch_scholar_tool`, `deepresearch_visit_tool`.
 
 ## Development Workflow
 

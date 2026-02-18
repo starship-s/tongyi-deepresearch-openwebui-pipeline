@@ -1,15 +1,11 @@
 """
-id: deepresearch-scholar
+id: deepresearch_scholar_tool
 title: DeepResearch Scholar Tool
 author: starship-s
 author_url: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline
-version: 0.1.0
+version: 0.1.1
 license: MIT
-description: >
-    Searches academic literature via Open WebUI's built-in search
-    engine with an 'academic research' prefix, returning raw result
-    snippets formatted to match the upstream DeepResearch training
-    format for google_scholar.
+description: Academic literature search via Open WebUI for the DeepResearch pipe.
 """
 
 import sys

@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.4] - 2026-02-18
+
+### Fixed
+
+- Frontmatter `description` collapsed to a single line so Open WebUI's
+  `extractFrontmatter` parser captures the full value instead of just `>`.
+- Frontmatter `id` fields now use underscores (matching Open WebUI's
+  auto-derive logic from the `title`) so the ID is consistent when importing.
+- Tool IDs in `_TOOL_REGISTRY` and `pipes()` updated to match the new
+  frontmatter IDs.
+
 ## [0.2.3] - 2026-02-17
 
 ### Fixed
@@ -42,6 +53,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Pipe delegates `visit` calls to the standalone tool when `VISIT_TOOL_ENABLED=True`.
 - Project is now installable via `pip install` using hatchling.
 
-[Unreleased]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.3...HEAD
+[Unreleased]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.4...HEAD
+[0.2.4]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.0...v0.2.3
 [0.2.0]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/releases/tag/v0.2.0

@@ -1,17 +1,11 @@
 """
-id: tongyi-deepresearch
+id: tongyi_deepresearch_pipe
 title: Tongyi DeepResearch
 author: starship-s
 author_url: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline
-version: 0.2.3
+version: 0.2.4
 license: MIT
-description: >
-    Agentic deep-research pipe that uses Tongyi DeepResearch
-    (alibaba/tongyi-deepresearch-30b-a3b) via any OpenAI-compatible
-    API.  Translates the model's XML-structured tool_call blocks
-    into real web searches and URL fetches using Open WebUI's
-    built-in web search and content loader, then feeds results
-    back until the model produces a final answer.
+description: Agentic deep-research pipe for Open WebUI, powered by Tongyi DeepResearch.
 required_open_webui_version: 0.5.0
 requirements: httpx
 """
@@ -357,7 +351,7 @@ class Pipe:
             self._auto_install_tools()
         return [
             {
-                "id": "tongyi-deepresearch",
+                "id": "tongyi_deepresearch",
                 "name": "Tongyi DeepResearch",
                 "description": (
                     "Agentic deep-research assistant"
@@ -381,7 +375,7 @@ class Pipe:
 
     _TOOL_REGISTRY: ClassVar[list[dict]] = [
         {
-            "id": "deepresearch-search",
+            "id": "deepresearch_search_tool",
             "name": "DeepResearch Search Tool",
             "module": "search_tool.py",
             "description": (
@@ -393,7 +387,7 @@ class Pipe:
             "specs": [_SEARCH_TOOL_DEF],
         },
         {
-            "id": "deepresearch-scholar",
+            "id": "deepresearch_scholar_tool",
             "name": "DeepResearch Scholar Tool",
             "module": "scholar_tool.py",
             "description": (
@@ -406,7 +400,7 @@ class Pipe:
             "specs": [_SCHOLAR_TOOL_DEF],
         },
         {
-            "id": "deepresearch-visit",
+            "id": "deepresearch_visit_tool",
             "name": "DeepResearch Visit Tool",
             "module": "visit_tool.py",
             "description": (

@@ -1,14 +1,11 @@
 """
-id: deepresearch-search
+id: deepresearch_search_tool
 title: DeepResearch Search Tool
 author: starship-s
 author_url: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline
-version: 0.2.3
+version: 0.2.4
 license: MIT
-description: >
-    Searches the web via Open WebUI's built-in search engine and
-    returns raw result snippets formatted to match the upstream
-    DeepResearch training format.
+description: Web search tool returning raw snippets in DeepResearch training format.
 """
 
 from __future__ import annotations
