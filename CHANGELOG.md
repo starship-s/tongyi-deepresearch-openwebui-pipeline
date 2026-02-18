@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.9] - 2026-02-18
+
+### Fixed
+
+- Tool auto-install now works when the pipe is imported via GitHub URL. When
+  `importlib.resources` cannot locate the tool source (package not pip-installed),
+  `_read_tool_source()` fetches tool modules from the project's GitHub raw URL,
+  enabling search, scholar, and visit tools to be installed automatically.
+
 ## [0.2.8] - 2026-02-18
 
 ### Added
@@ -42,7 +51,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   cards and tool-call cards are yielded directly from the pipe return instead
   of being emitted via `__event_emitter__`, enabling correct rendering of
   collapsible thinking blocks and tool cards in Open WebUI ≥ 0.8.
-- `_build_thinking_card()` — renders reasoning as collapsible `<details>` blocks.
+- `_build_thinking_block()` — wraps reasoning in `<think>` tags for Open WebUI's
+  native "Thought for x seconds" renderer.
 - `_execute_tool_call_and_append()` — helper that runs a tool call, appends the
   `<tool_response>` message, and returns the display card markup.
 - Tool-call cards now include `<div class="tool-result">` for full result
@@ -112,7 +122,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Pipe delegates `visit` calls to the standalone tool when `VISIT_TOOL_ENABLED=True`.
 - Project is now installable via `pip install` using hatchling.
 
-[Unreleased]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.8...HEAD
+[Unreleased]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.9...HEAD
+[0.2.9]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.8...v0.2.9
 [0.2.8]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.7...v0.2.8
 [0.2.7]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.5...v0.2.7
 [0.2.5]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.4...v0.2.5

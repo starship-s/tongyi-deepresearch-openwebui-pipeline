@@ -3,7 +3,7 @@ id: tongyi_deepresearch_pipe
 title: Tongyi DeepResearch
 author: starship-s
 author_url: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline
-version: 0.2.8
+version: 0.2.9
 license: MIT
 description: Agentic deep-research pipe for Open WebUI, powered by Tongyi DeepResearch.
 required_open_webui_version: 0.8.0
@@ -35,6 +35,9 @@ logger = logging.getLogger(__name__)
 # =========================================================================== #
 #  Constants                                                                   #
 # =========================================================================== #
+
+# Must stay in sync with docstring metadata (version:) and pyproject.toml.
+_VERSION = "0.2.9"
 
 HTTP_OK = 200
 STATUS_PING_INTERVAL_S = 4
@@ -383,6 +386,13 @@ class Pipe:
     #  Tool auto-install
     # ------------------------------------------------------------------ #
 
+    _TOOL_SOURCE_URL_TEMPLATE: ClassVar[str] = (
+        "https://raw.githubusercontent.com"
+        "/starship-s/tongyi-deepresearch-openwebui-pipeline"
+        "/{ref}"
+        "/src/tongyi_deepresearch_openwebui_pipeline/tools/{module}"
+    )
+
     _TOOL_REGISTRY: ClassVar[list[dict]] = [
         {
             "id": "deepresearch_search_tool",
@@ -541,7 +551,7 @@ class Pipe:
 
     @staticmethod
     def _read_tool_source(module_name: str) -> str | None:
-        """Read tool source code from the installed package."""
+        """Read tool source from the installed package or GitHub raw URL."""
         try:
             from importlib.resources import (  # noqa: PLC0415
                 files as _files,
@@ -553,11 +563,28 @@ class Pipe:
             return resource.read_text(encoding="utf-8")  # type: ignore[union-attr]
         except Exception:
             logger.debug(
-                "Could not read tool source for %s",
+                "Could not read tool source for %s via importlib.resources",
                 module_name,
                 exc_info=True,
             )
-            return None
+
+        for ref in (f"v{_VERSION}", "main"):
+            try:
+                url = Pipe._TOOL_SOURCE_URL_TEMPLATE.format(
+                    ref=ref,
+                    module=module_name,
+                )
+                resp = httpx.get(url, timeout=10, follow_redirects=True)
+                if resp.status_code == HTTP_OK:
+                    return resp.text
+            except Exception:
+                logger.debug(
+                    "Could not fetch tool source for %s from GitHub (ref=%s)",
+                    module_name,
+                    ref,
+                    exc_info=True,
+                )
+        return None
 
     # ------------------------------------------------------------------ #
     #  System-prompt builder
@@ -1508,12 +1535,9 @@ class Pipe:
         return None
 
     @staticmethod
-    def _build_thinking_card(thinking: str) -> str:
-        """Render reasoning as a collapsible block without ``<think>`` tags."""
-        escaped_thinking = html.escape(thinking)
-        return (
-            f"<details>\n<summary>Thought</summary>\n\n{escaped_thinking}\n</details>\n"
-        )
+    def _build_thinking_block(thinking: str) -> str:
+        """Wrap reasoning in ``<think>`` tags for Open WebUI's native renderer."""
+        return f"<think>\n{thinking}\n</think>\n"
 
     async def _execute_tool_call_and_append(
         self,
@@ -1572,7 +1596,7 @@ class Pipe:
                 if not thinking:
                     thinking = self._extract_thinking(full) or ""
                 if thinking:
-                    yield self._build_thinking_card(thinking)
+                    yield self._build_thinking_block(thinking)
 
             tc = self._extract_tool_call(full)
             if tc:
