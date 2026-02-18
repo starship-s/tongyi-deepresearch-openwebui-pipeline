@@ -3,6 +3,8 @@
 > Agentic deep-research pipe that bridges Tongyi DeepResearch
 > (alibaba/tongyi-deepresearch-30b-a3b via OpenRouter) with Open WebUI.
 
+[![CI](https://github.com/<org>/tongyi-deepresearch-openwebui-pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/<org>/tongyi-deepresearch-openwebui-pipeline/actions/workflows/ci.yml)
+[![Release](https://github.com/<org>/tongyi-deepresearch-openwebui-pipeline/actions/workflows/release.yml/badge.svg)](https://github.com/<org>/tongyi-deepresearch-openwebui-pipeline/actions/workflows/release.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python ≥ 3.14](https://img.shields.io/badge/Python-%E2%89%A5%203.14-3776AB.svg)](https://www.python.org/)
 [![Open WebUI ≥ 0.4.0](https://img.shields.io/badge/Open%20WebUI-%E2%89%A5%200.4.0-2ea44f.svg)](https://openwebui.com/)
@@ -96,6 +98,21 @@ pip install git+https://github.com/<org>/tongyi-deepresearch-openwebui-pipeline.
 Or download the `.whl` from the
 [GitHub Releases](https://github.com/<org>/tongyi-deepresearch-openwebui-pipeline/releases)
 page (produced by the CI workflow).
+
+### Releases
+
+Every tagged version (`v*`) triggers the release workflow, which publishes a
+GitHub Release containing:
+
+- **Python wheel** (`.whl`) and **sdist** (`.tar.gz`) — install with
+  `pip install <file>`.
+- **`tongyi_deepresearch_pipe.py`** and **`visit_tool.py`** — the raw shim
+  files you can drag-and-drop directly into Open WebUI's Functions / Tools
+  panels.
+
+Browse all releases on the
+[Releases](https://github.com/<org>/tongyi-deepresearch-openwebui-pipeline/releases)
+page.
 
 ## Open WebUI Setup
 

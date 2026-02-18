@@ -165,6 +165,20 @@ pyright
 pytest
 ```
 
+### Releasing
+
+1. Bump `version` in `pyproject.toml` and add an entry to `CHANGELOG.md`.
+2. Commit, tag, and push:
+
+   ```bash
+   git tag v<version>
+   git push origin v<version>
+   ```
+
+3. The `release.yml` workflow runs automatically, building the wheel and sdist
+   via hatchling and publishing a GitHub Release with four assets: the wheel,
+   the sdist, `tongyi_deepresearch_pipe.py`, and `visit_tool.py`.
+
 ## Adding a New Tool — Step-by-Step Guide
 
 1. In `DEEPRESEARCH_SYSTEM_PROMPT_TEMPLATE` (top of `pipes/pipe.py`), add a
