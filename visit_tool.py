@@ -1,5 +1,4 @@
-"""DeepResearch visit tool for Open WebUI.
-
+"""
 id: deepresearch-visit
 title: DeepResearch Visit Tool
 author: starship-s

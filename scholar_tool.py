@@ -1,5 +1,4 @@
-"""DeepResearch Google Scholar tool for Open WebUI.
-
+"""
 id: deepresearch-scholar
 title: DeepResearch Scholar Tool
 author: starship-s
