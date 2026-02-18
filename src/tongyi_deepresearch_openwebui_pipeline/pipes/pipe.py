@@ -560,7 +560,7 @@ class Pipe:
                 obj = parser(raw)
                 if isinstance(obj, dict) and "name" in obj:
                     return obj
-            except json.JSONDecodeError, ValueError:
+            except (json.JSONDecodeError, ValueError):
                 continue
 
         return None
@@ -777,6 +777,62 @@ class Pipe:
     #  Search tool                                                         #
     # ================================================================== #
 
+    @staticmethod
+    def _resolve_search_tools_class() -> type | None:
+        """Locate the search-tool ``Tools`` class across install methods.
+
+        Tries four strategies in order:
+        1. Package import (pip-installed).
+        2. Direct module import (``search_tool.py`` on ``sys.path``).
+        3. Scan ``sys.modules`` for an Open WebUI-loaded tool module
+           (stored as ``tool_{id}``).
+        4. Load from the Open WebUI database via
+           ``load_tool_module_by_id``.
+        """
+        import sys as _sys  # noqa: PLC0415
+
+        try:
+            from tongyi_deepresearch_openwebui_pipeline.tools.search_tool import (  # noqa: PLC0415
+                Tools,
+            )
+
+            return Tools  # type: ignore[no-any-return]
+        except ImportError:
+            pass
+
+        try:
+            from search_tool import (  # type: ignore[import-not-found]  # noqa: PLC0415
+                Tools,
+            )
+
+            return Tools  # type: ignore[no-any-return]
+        except ImportError:
+            pass
+
+        for _name, mod in _sys.modules.items():
+            if not _name.startswith("tool_"):
+                continue
+            cls = getattr(mod, "Tools", None)
+            if cls is not None and callable(getattr(cls, "search", None)):
+                return cls  # type: ignore[no-any-return]
+
+        try:
+            from open_webui.models.tools import (  # type: ignore[import-not-found]  # noqa: PLC0415
+                Tools as ToolsDB,
+            )
+            from open_webui.utils.plugin import (  # type: ignore[import-not-found]  # noqa: PLC0415
+                load_tool_module_by_id,
+            )
+
+            for tool in ToolsDB.get_tools():
+                if "class Tools" in tool.content and "def search" in tool.content:
+                    instance, _ = load_tool_module_by_id(tool.id)
+                    return type(instance)
+        except Exception:  # noqa: S110
+            pass
+
+        return None
+
     async def _execute_search(
         self,
         queries: list[str],
@@ -784,9 +840,9 @@ class Pipe:
         scholar: bool = False,
     ) -> str:
         """Execute search via the standalone search_tool module."""
-        from tongyi_deepresearch_openwebui_pipeline.tools.search_tool import (  # noqa: PLC0415
-            Tools as SearchTools,
-        )
+        SearchTools = self._resolve_search_tools_class()  # noqa: N806
+        if SearchTools is None:
+            return "[search] search_tool module not found — install search_tool.py."
 
         search_tools = SearchTools()
         search_tools.request = self._request
