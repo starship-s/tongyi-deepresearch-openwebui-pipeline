@@ -708,7 +708,7 @@ class Pipe:
                 obj = parser(raw)
                 if isinstance(obj, dict) and "name" in obj:
                     return obj
-            except json.JSONDecodeError, ValueError:
+            except (json.JSONDecodeError, ValueError):
                 continue
 
         return None
