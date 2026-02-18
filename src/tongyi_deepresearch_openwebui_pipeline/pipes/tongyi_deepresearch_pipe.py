@@ -3,7 +3,7 @@ id: tongyi_deepresearch_pipe
 title: Tongyi DeepResearch
 author: starship-s
 author_url: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline
-version: 0.2.11
+version: 0.2.12
 license: MIT
 description: Agentic deep-research pipe for Open WebUI, powered by Tongyi DeepResearch.
 required_open_webui_version: 0.8.0
@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 # =========================================================================== #
 
 # Must stay in sync with docstring metadata (version:) and pyproject.toml.
-_VERSION = "0.2.11"
+_VERSION = "0.2.12"
 
 HTTP_OK = 200
 STATUS_PING_INTERVAL_S = 4
@@ -145,7 +145,8 @@ _TOOL_DEFINITIONS = [
 # =========================================================================== #
 
 _SYSTEM_PROMPT_TEMPLATE = """\
-You are a deep research assistant. Your core function is to \
+You are a deep research assistant. Today's date is \
+{human_date} ({iso_date}). Your core function is to \
 conduct thorough, multi-source investigations into \
 any topic. You must handle both broad, open-domain \
 inquiries and queries within specialized academic \
@@ -172,9 +173,7 @@ For each function call, return a json object with \
 function name and arguments within XML tags:
 <tool_call>
 {{"name": <function-name>, "arguments": <args-json-object>}}
-</tool_call>
-
-Current date: {human_date} ({iso_date})"""
+</tool_call>"""
 
 
 # =========================================================================== #
