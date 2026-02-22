@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.17] - 2026-02-22
+
+### Fixed
+
+- Concurrent `pipe()` calls no longer cross-contaminate request contexts. The
+  `Pipe` singleton previously stored `_request`, `_user`, and `_event_emitter`
+  as mutable instance attributes, so a second call could overwrite them before
+  the first call's `await` points finished. Introduced a `_RequestContext`
+  dataclass that bundles the three per-call values and is threaded through
+  every method as an explicit `ctx` parameter, making each call stack fully
+  self-contained and safe for concurrent use.
+
 ## [0.2.16] - 2026-02-18
 
 ### Fixed
@@ -194,7 +206,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Pipe delegates `visit` calls to the standalone tool when `VISIT_TOOL_ENABLED=True`.
 - Project is now installable via `pip install` using hatchling.
 
-[Unreleased]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.16...HEAD
+[Unreleased]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.17...HEAD
+[0.2.17]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.16...v0.2.17
 [0.2.16]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.15...v0.2.16
 [0.2.15]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.14...v0.2.15
 [0.2.14]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.13...v0.2.14

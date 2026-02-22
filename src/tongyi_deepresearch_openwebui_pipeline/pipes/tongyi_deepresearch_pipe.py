@@ -3,7 +3,7 @@ id: tongyi_deepresearch_pipe
 title: Tongyi DeepResearch
 author: starship-s
 author_url: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline
-version: 0.2.16
+version: 0.2.17
 license: MIT
 description: Agentic deep-research pipe for Open WebUI, powered by Tongyi DeepResearch.
 required_open_webui_version: 0.8.0
@@ -24,6 +24,7 @@ from collections.abc import (  # noqa: TC003 — runtime needed by Open WebUI
     Awaitable,
     Callable,
 )
+from dataclasses import dataclass
 from datetime import date
 from typing import ClassVar
 from uuid import uuid4
@@ -38,7 +39,7 @@ logger = logging.getLogger(__name__)
 # =========================================================================== #
 
 # Must stay in sync with docstring metadata (version:) and pyproject.toml.
-_VERSION = "0.2.16"
+_VERSION = "0.2.17"
 
 HTTP_OK = 200
 STATUS_PING_INTERVAL_S = 4
@@ -221,6 +222,20 @@ class _CostTracker:
 
 
 # =========================================================================== #
+#  Per-request context (thread-safe across concurrent pipe() calls)             #
+# =========================================================================== #
+
+
+@dataclass
+class _RequestContext:
+    """Per-call values so concurrent ``pipe()`` calls never share state."""
+
+    request: object | None
+    user: object | None
+    event_emitter: Callable[[dict], Awaitable[None]] | None
+
+
+# =========================================================================== #
 #  Pipe                                                                        #
 # =========================================================================== #
 
@@ -360,9 +375,6 @@ class Pipe:
     def __init__(self) -> None:
         """Initialise valves with defaults."""
         self.valves = self.Valves()
-        self._request: object | None = None
-        self._user: object | None = None
-        self._event_emitter: Callable[[dict], Awaitable[None]] | None = None
 
     def pipes(self) -> list:
         """Return the list of available pipe definitions."""
@@ -729,9 +741,11 @@ class Pipe:
     #  Event emitters                                                      #
     # ================================================================== #
 
-    async def _emit_status(self, desc: str, done: bool = False) -> None:
-        if self._event_emitter:
-            await self._event_emitter(
+    async def _emit_status(
+        self, ctx: _RequestContext, desc: str, done: bool = False
+    ) -> None:
+        if ctx.event_emitter:
+            await ctx.event_emitter(
                 {
                     "type": "status",
                     "data": {
@@ -741,9 +755,9 @@ class Pipe:
                 }
             )
 
-    async def _emit_message(self, text: str) -> None:
-        if self._event_emitter:
-            await self._event_emitter(
+    async def _emit_message(self, ctx: _RequestContext, text: str) -> None:
+        if ctx.event_emitter:
+            await ctx.event_emitter(
                 {
                     "type": "message",
                     "data": {"content": text},
@@ -756,6 +770,7 @@ class Pipe:
 
     async def _call_llm(
         self,
+        ctx: _RequestContext,
         messages: list,
         max_retries: int = 3,
         *,
@@ -792,6 +807,7 @@ class Pipe:
         for attempt in range(max_retries):
             try:
                 return await self._stream_completion(
+                    ctx,
                     url,
                     headers,
                     payload,
@@ -802,7 +818,7 @@ class Pipe:
                 if attempt < max_retries - 1:
                     wait = 2**attempt
                     await self._emit_status(
-                        f"API error, retrying in {wait}s\u2026 ({exc})"
+                        ctx, f"API error, retrying in {wait}s\u2026 ({exc})"
                     )
                     await asyncio.sleep(wait)
 
@@ -810,6 +826,7 @@ class Pipe:
 
     async def _emit_reasoning_delta(
         self,
+        ctx: _RequestContext,
         reasoning: str,
         prev_len: int,
         content: str,
@@ -822,16 +839,17 @@ class Pipe:
         new_text = reasoning[prev_len:]
         if new_text:
             if not state["open"]:
-                await self._emit_message(THINK_OPEN_TAG)
+                await self._emit_message(ctx, THINK_OPEN_TAG)
                 state["open"] = True
-            await self._emit_message(new_text)
+            await self._emit_message(ctx, new_text)
 
         if state["open"] and not state["closed"] and content:
-            await self._emit_message(THINK_CLOSE_TAG)
+            await self._emit_message(ctx, THINK_CLOSE_TAG)
             state["closed"] = True
 
     async def _stream_completion(
         self,
+        ctx: _RequestContext,
         url: str,
         headers: dict,
         payload: dict,
@@ -887,16 +905,18 @@ class Pipe:
 
                 if emit_thinking:
                     await self._emit_reasoning_delta(
-                        reasoning, prev_reasoning_len, content, think_state
+                        ctx, reasoning, prev_reasoning_len, content, think_state
                     )
 
                 if time.time() - last_ping > STATUS_PING_INTERVAL_S:
                     n = len(reasoning) + len(content)
-                    await self._emit_status(f"Generating\u2026 ({n:,} chars received)")
+                    await self._emit_status(
+                        ctx, f"Generating\u2026 ({n:,} chars received)"
+                    )
                     last_ping = time.time()
 
         if emit_thinking and think_state["open"] and not think_state["closed"]:
-            await self._emit_message(THINK_CLOSE_TAG)
+            await self._emit_message(ctx, THINK_CLOSE_TAG)
 
         if usage is None:
             usage = self._estimate_usage_from_chars(payload, reasoning, content)
@@ -1072,6 +1092,7 @@ class Pipe:
 
     async def _execute_tool(
         self,
+        ctx: _RequestContext,
         name: str,
         arguments: dict,
     ) -> str:
@@ -1090,30 +1111,32 @@ class Pipe:
             queries = arguments.get("query", [])
             if isinstance(queries, str):
                 queries = [queries]
-            return await self._execute_search(queries)
+            return await self._execute_search(ctx, queries)
 
         if name == "visit":
             urls = arguments.get("url", [])
             if isinstance(urls, str):
                 urls = [urls]
             goal = arguments.get("goal", "Extract relevant information")
-            return await self._execute_visit(urls, goal)
+            return await self._execute_visit(ctx, urls, goal)
 
         if name == "google_scholar":
             queries = arguments.get("query", [])
             if isinstance(queries, str):
                 queries = [queries]
-            return await self._execute_scholar(queries)
+            return await self._execute_scholar(ctx, queries)
 
         return f"[Error] Unknown tool: {name}"
 
     # ---- visit tool -------------------------------------------------- #
 
-    async def _execute_visit(self, urls: list[str], goal: str) -> str:
+    async def _execute_visit(
+        self, ctx: _RequestContext, urls: list[str], goal: str
+    ) -> str:
         """Execute the visit tool using the configured backend."""
         if self.valves.VISIT_ENABLED and self.valves.API_KEY:
-            return await self._execute_visit_with_tool(urls, goal)
-        return await self._execute_visit_builtin(urls, goal)
+            return await self._execute_visit_with_tool(ctx, urls, goal)
+        return await self._execute_visit_builtin(ctx, urls, goal)
 
     @staticmethod
     def _resolve_visit_tools_class() -> type | None:
@@ -1171,7 +1194,9 @@ class Pipe:
 
         return None
 
-    async def _execute_visit_with_tool(self, urls: list[str], goal: str) -> str:
+    async def _execute_visit_with_tool(
+        self, ctx: _RequestContext, urls: list[str], goal: str
+    ) -> str:
         """Visit URLs using the standalone deepresearch_visit_tool module."""
         VisitTools = self._resolve_visit_tools_class()  # noqa: N806
         if VisitTools is None:
@@ -1182,7 +1207,7 @@ class Pipe:
             )
 
         visit_tools = VisitTools()
-        visit_tools.request = self._request
+        visit_tools.request = ctx.request
         visit_tools.valves.SUMMARY_MODEL_API_KEY = self.valves.API_KEY
         visit_tools.valves.SUMMARY_MODEL_BASE_URL = self.valves.API_BASE_URL
         visit_tools.valves.MAX_PAGE_CHARS = self.valves.MAX_PAGE_LENGTH
@@ -1192,22 +1217,27 @@ class Pipe:
         async def _visit_emitter(event: dict) -> None:
             d = event.get("data", {})
             await pipe_self._emit_status(
+                ctx,
                 d.get("description", ""),
                 d.get("done", False),
             )
 
         return await visit_tools.visit(urls, goal, _visit_emitter)
 
-    async def _execute_visit_builtin(self, urls: list[str], goal: str) -> str:
+    async def _execute_visit_builtin(
+        self, ctx: _RequestContext, urls: list[str], goal: str
+    ) -> str:
         """Visit URLs using Open WebUI's built-in content loader."""
         from open_webui.retrieval.utils import (  # type: ignore[import-not-found]  # noqa: PLC0415
             get_content_from_url,
         )
 
         if len(urls) == 1:
-            await self._emit_status(f"Visiting: {urls[0]}")
+            await self._emit_status(ctx, f"Visiting: {urls[0]}")
         else:
-            await self._emit_status(f"Visiting {len(urls)} pages concurrently\u2026")
+            await self._emit_status(
+                ctx, f"Visiting {len(urls)} pages concurrently\u2026"
+            )
 
         max_len = self.valves.MAX_PAGE_LENGTH
 
@@ -1215,7 +1245,7 @@ class Pipe:
             try:
                 content, _title = await asyncio.to_thread(
                     get_content_from_url,
-                    self._request,
+                    ctx.request,
                     u,
                 )
                 if not content or not content.strip():
@@ -1299,6 +1329,7 @@ class Pipe:
 
     async def _execute_search(
         self,
+        ctx: _RequestContext,
         queries: list[str],
     ) -> str:
         """Execute search via the standalone deepresearch_search_tool module."""
@@ -1310,8 +1341,8 @@ class Pipe:
             )
 
         search_tools = SearchTools()
-        search_tools.request = self._request
-        search_tools.user = self._user
+        search_tools.request = ctx.request
+        search_tools.user = ctx.user
         search_tools.valves.MAX_RESULTS_PER_QUERY = self.valves.SEARCH_RESULTS_PER_QUERY
         search_tools.valves.MAX_QUERIES_PER_SEARCH = self.valves.MAX_QUERIES_PER_SEARCH
 
@@ -1320,6 +1351,7 @@ class Pipe:
         async def _search_emitter(event: dict) -> None:
             d = event.get("data", {})
             await pipe_self._emit_status(
+                ctx,
                 d.get("description", ""),
                 d.get("done", False),
             )
@@ -1391,6 +1423,7 @@ class Pipe:
 
     async def _execute_scholar(
         self,
+        ctx: _RequestContext,
         queries: list[str],
     ) -> str:
         """Execute Google Scholar search via deepresearch_scholar_tool."""
@@ -1402,8 +1435,8 @@ class Pipe:
             )
 
         scholar_tools = ScholarTools()
-        scholar_tools.request = self._request
-        scholar_tools.user = self._user
+        scholar_tools.request = ctx.request
+        scholar_tools.user = ctx.user
         scholar_tools.valves.MAX_RESULTS_PER_QUERY = (
             self.valves.SEARCH_RESULTS_PER_QUERY
         )
@@ -1414,6 +1447,7 @@ class Pipe:
         async def _scholar_emitter(event: dict) -> None:
             d = event.get("data", {})
             await pipe_self._emit_status(
+                ctx,
                 d.get("description", ""),
                 d.get("done", False),
             )
@@ -1491,9 +1525,9 @@ class Pipe:
         __request__: object | None = None,
     ) -> str | AsyncGenerator[str, None]:
         """Entry point called by Open WebUI for every user message."""
-        self._store_request_context(__user__, __event_emitter__, __request__)
+        ctx = self._store_request_context(__user__, __event_emitter__, __request__)
 
-        error = self._preflight_check()
+        error = self._preflight_check(ctx)
         if error:
             return error
 
@@ -1501,9 +1535,9 @@ class Pipe:
         tracker = _CostTracker()
 
         if body.get("stream"):
-            return self._pipe_stream(messages, tracker)
+            return self._pipe_stream(ctx, messages, tracker)
 
-        return await self._run_agentic_loop(messages, tracker)
+        return await self._run_agentic_loop(ctx, messages, tracker)
 
     # ---- pipe helpers ------------------------------------------------ #
 
@@ -1512,25 +1546,28 @@ class Pipe:
         __user__: dict | None,
         __event_emitter__: (Callable[[dict], Awaitable[None]] | None),
         __request__: object | None,
-    ) -> None:
-        """Store the Open WebUI request context for tool handlers."""
-        self._request = __request__
-        self._event_emitter = __event_emitter__
-        self._user = None
+    ) -> _RequestContext:
+        """Build and return a per-call request context (no mutable self state)."""
+        user: object | None = None
         if __user__:
             try:
                 from open_webui.models.users import (  # type: ignore[import-not-found]  # noqa: PLC0415
                     UserModel,
                 )
 
-                self._user = UserModel(**__user__)
+                user = UserModel(**__user__)
             except Exception:
                 logger.debug(
                     "Failed to parse __user__",
                     exc_info=True,
                 )
+        return _RequestContext(
+            request=__request__,
+            user=user,
+            event_emitter=__event_emitter__,
+        )
 
-    def _preflight_check(self) -> str | None:
+    def _preflight_check(self, ctx: _RequestContext) -> str | None:
         """Return an error message if configuration is invalid."""
         if not self.valves.API_KEY:
             return (
@@ -1539,7 +1576,7 @@ class Pipe:
                 " \u2192 Tongyi DeepResearch \u2192 Valves*"
                 " to configure it."
             )
-        if self._request is None:
+        if ctx.request is None:
             return (
                 "**Configuration error:** This pipe"
                 " requires access to the Open WebUI request"
@@ -1573,18 +1610,23 @@ class Pipe:
 
     async def _run_agentic_loop(
         self,
+        ctx: _RequestContext,
         messages: list[dict],
         tracker: _CostTracker,
     ) -> str:
         """Run the multi-turn ReAct loop until an answer is produced."""
         for round_num in range(1, self.valves.MAX_TOOL_ROUNDS + 1):
-            await self._emit_status(f"Round {round_num} \u2014 calling model\u2026")
-            if await self._apply_context_guard(messages):
+            await self._emit_status(
+                ctx, f"Round {round_num} \u2014 calling model\u2026"
+            )
+            if await self._apply_context_guard(ctx, messages):
                 return await self._force_final_answer(
-                    messages, tracker, skip_append=True
+                    ctx, messages, tracker, skip_append=True
                 )
 
-            model_result = await self._call_model_safe(messages, tracker, round_num)
+            model_result = await self._call_model_safe(
+                ctx, messages, tracker, round_num
+            )
             if isinstance(model_result, str):
                 return model_result
 
@@ -1596,17 +1638,18 @@ class Pipe:
                 thinking = self._extract_thinking(full)
                 if thinking:
                     await self._emit_message(
-                        THINK_OPEN_TAG + thinking + THINK_CLOSE_TAG
+                        ctx, THINK_OPEN_TAG + thinking + THINK_CLOSE_TAG
                     )
 
-            action = await self._process_round(full, messages, tracker, round_num)
+            action = await self._process_round(ctx, full, messages, tracker, round_num)
             if action is not None:
                 return action
 
-        return await self._force_final_answer(messages, tracker)
+        return await self._force_final_answer(ctx, messages, tracker)
 
     async def _call_model_safe(
         self,
+        ctx: _RequestContext,
         messages: list[dict],
         tracker: _CostTracker,
         round_num: int,
@@ -1616,16 +1659,19 @@ class Pipe:
         """Call the model, returning (reasoning, content, full) or an error string."""
         try:
             reasoning, content, usage = await self._call_llm(
+                ctx,
                 messages,
                 emit_thinking_to_emitter=emit_thinking_to_emitter,
             )
             tracker.update(usage)
         except Exception as exc:
-            await self._emit_status(f"API error: {exc}", done=True)
+            await self._emit_status(ctx, f"API error: {exc}", done=True)
             return f"**API error:** {exc}"
 
         if self.valves.SHOW_COST_TRACKING:
-            await self._emit_status(f"Round {round_num} \u2014 {tracker.summary()}")
+            await self._emit_status(
+                ctx, f"Round {round_num} \u2014 {tracker.summary()}"
+            )
 
         full = self._reconstruct_full_turn(reasoning, content)
         return reasoning, content, full
@@ -1641,7 +1687,9 @@ class Pipe:
         " <answer></answer> tags."
     )
 
-    async def _apply_context_guard(self, messages: list[dict]) -> bool:
+    async def _apply_context_guard(
+        self, ctx: _RequestContext, messages: list[dict]
+    ) -> bool:
         """Inject a wrap-up request when the context budget is nearly exhausted.
 
         When triggered, overwrites the last message (to reclaim space) or
@@ -1653,7 +1701,7 @@ class Pipe:
             return False
 
         await self._emit_status(
-            "Context limit approaching \u2014 requesting final answer\u2026"
+            ctx, "Context limit approaching \u2014 requesting final answer\u2026"
         )
 
         if len(messages) >= _MIN_MESSAGES_FOR_CONTEXT_OVERWRITE:
@@ -1669,6 +1717,7 @@ class Pipe:
 
     async def _process_round(
         self,
+        ctx: _RequestContext,
         full: str,
         messages: list[dict],
         tracker: _CostTracker,
@@ -1681,12 +1730,13 @@ class Pipe:
         """
         tc = self._extract_tool_call(full)
         if tc:
-            await self._handle_tool_call(tc, messages, round_num)
+            await self._handle_tool_call(ctx, tc, messages, round_num)
             return None
 
         answer = self._extract_answer(full)
         if answer:
             await self._emit_status(
+                ctx,
                 tracker.summary("Research complete \u00b7 "),
                 done=True,
             )
@@ -1694,11 +1744,11 @@ class Pipe:
 
         clean = self._strip_xml_for_display(full)
         if clean:
-            await self._emit_status(tracker.summary("Done \u00b7 "), done=True)
+            await self._emit_status(ctx, tracker.summary("Done \u00b7 "), done=True)
             return clean
 
         await self._emit_status(
-            f"Round {round_num} \u2014 empty response, retrying\u2026"
+            ctx, f"Round {round_num} \u2014 empty response, retrying\u2026"
         )
         return None
 
@@ -1709,6 +1759,7 @@ class Pipe:
 
     async def _execute_tool_call_and_append(
         self,
+        ctx: _RequestContext,
         tc: dict,
         messages: list[dict],
         round_num: int,
@@ -1719,10 +1770,12 @@ class Pipe:
         if not isinstance(tool_args, dict):
             tool_args = {}
 
-        await self._emit_status(f"Round {round_num} \u2014 executing {tool_name}\u2026")
+        await self._emit_status(
+            ctx, f"Round {round_num} \u2014 executing {tool_name}\u2026"
+        )
 
         try:
-            result = await self._execute_tool(tool_name, tool_args)
+            result = await self._execute_tool(ctx, tool_name, tool_args)
         except Exception as exc:
             result = f"[Tool Error] {tool_name} failed: {exc}"
 
@@ -1736,14 +1789,18 @@ class Pipe:
 
     async def _pipe_stream(  # noqa: C901
         self,
+        ctx: _RequestContext,
         messages: list[dict],
         tracker: _CostTracker,
     ) -> AsyncGenerator[str, None]:
         """Stream reasoning cards, tool cards and final answer as pipe output."""
         for round_num in range(1, self.valves.MAX_TOOL_ROUNDS + 1):
-            await self._emit_status(f"Round {round_num} \u2014 calling model\u2026")
-            if await self._apply_context_guard(messages):
+            await self._emit_status(
+                ctx, f"Round {round_num} \u2014 calling model\u2026"
+            )
+            if await self._apply_context_guard(ctx, messages):
                 final_answer = await self._force_final_answer(
+                    ctx,
                     messages,
                     tracker,
                     emit_thinking_to_emitter=False,
@@ -1755,6 +1812,7 @@ class Pipe:
                 return
 
             model_result = await self._call_model_safe(
+                ctx,
                 messages,
                 tracker,
                 round_num,
@@ -1779,13 +1837,16 @@ class Pipe:
 
             tc = self._extract_tool_call(full)
             if tc:
-                card = await self._execute_tool_call_and_append(tc, messages, round_num)
+                card = await self._execute_tool_call_and_append(
+                    ctx, tc, messages, round_num
+                )
                 yield card
                 continue
 
             answer = self._extract_answer(full)
             if answer:
                 await self._emit_status(
+                    ctx,
                     tracker.summary("Research complete \u00b7 "),
                     done=True,
                 )
@@ -1795,16 +1856,17 @@ class Pipe:
 
             clean = self._strip_xml_for_display(full)
             if clean:
-                await self._emit_status(tracker.summary("Done \u00b7 "), done=True)
+                await self._emit_status(ctx, tracker.summary("Done \u00b7 "), done=True)
                 yield clean
                 yield "data: [DONE]"
                 return
 
             await self._emit_status(
-                f"Round {round_num} \u2014 empty response, retrying\u2026"
+                ctx, f"Round {round_num} \u2014 empty response, retrying\u2026"
             )
 
         final_answer = await self._force_final_answer(
+            ctx,
             messages,
             tracker,
             emit_thinking_to_emitter=False,
@@ -1815,16 +1877,18 @@ class Pipe:
 
     async def _handle_tool_call(
         self,
+        ctx: _RequestContext,
         tc: dict,
         messages: list[dict],
         round_num: int,
     ) -> None:
         """Execute a tool call and inject the result into messages."""
-        card = await self._execute_tool_call_and_append(tc, messages, round_num)
-        await self._emit_message(card)
+        card = await self._execute_tool_call_and_append(ctx, tc, messages, round_num)
+        await self._emit_message(ctx, card)
 
     async def _force_final_answer(
         self,
+        ctx: _RequestContext,
         messages: list[dict],
         tracker: _CostTracker,
         *,
@@ -1836,7 +1900,8 @@ class Pipe:
             pass
         else:
             await self._emit_status(
-                "Maximum research rounds reached \u2014 forcing final answer\u2026"
+                ctx,
+                "Maximum research rounds reached \u2014 forcing final answer\u2026",
             )
             messages.append(
                 {
@@ -1852,6 +1917,7 @@ class Pipe:
 
         try:
             reasoning, content, usage = await self._call_llm(
+                ctx,
                 messages,
                 emit_thinking_to_emitter=emit_thinking_to_emitter,
             )
@@ -1860,12 +1926,14 @@ class Pipe:
             answer = self._extract_answer(full)
             if answer:
                 await self._emit_status(
+                    ctx,
                     tracker.summary("Research complete \u00b7 "),
                     done=True,
                 )
                 return answer
 
             await self._emit_status(
+                ctx,
                 tracker.summary("Complete \u00b7 "),
                 done=True,
             )
@@ -1873,6 +1941,7 @@ class Pipe:
 
         except Exception as exc:
             await self._emit_status(
+                ctx,
                 tracker.summary("Error in final round \u00b7 "),
                 done=True,
             )
