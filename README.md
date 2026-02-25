@@ -91,7 +91,9 @@ sequenceDiagram
    → **Import**), and import `tongyi_deepresearch_pipe.py`.
 3. Go to **Workspace → Tools** and import `deepresearch_search_tool.py`,
    `deepresearch_scholar_tool.py`, and `deepresearch_visit_tool.py`.
-4. Open the pipe's **Valves** and set your `API_KEY`.
+4. Set `WEBUI_SECRET_KEY` in your Open WebUI environment (required for
+   encrypted-at-rest valve secrets), then open the pipe's **Valves** and set
+   your `API_KEY`.
 5. Enable a Web Search engine in **Admin → Settings → Web Search**.
 6. Start a new chat and select **Tongyi DeepResearch** from the model picker.
 
@@ -115,8 +117,8 @@ Browse all releases on the [Releases](https://github.com/starship-s/tongyi-deepr
 ## Pipe Valves Reference
 
 | Valve | Type | Default | Description |
-|---|---|---|---|
-| `API_KEY` | `str` | `""` | API key for the OpenAI-compatible endpoint |
+| --- | --- | --- | --- |
+| `API_KEY` | `EncryptedStr` | `""` | API key for the OpenAI-compatible endpoint (encrypted at rest when `WEBUI_SECRET_KEY` is set) |
 | `API_BASE_URL` | `str` | `https://openrouter.ai/api/v1` | OpenAI-compatible API base URL |
 | `MODEL_ID` | `str` | `alibaba/tongyi-deepresearch-30b-a3b` | Model identifier on the API provider |
 | `MAX_TOOL_ROUNDS` | `int` | `30` | Max agentic rounds (1–200) |
@@ -126,6 +128,7 @@ Browse all releases on the [Releases](https://github.com/starship-s/tongyi-deepr
 | `SEARCH_ENABLED` | `bool` | `True` | Enable the search tool and include it in the system prompt |
 | `SCHOLAR_ENABLED` | `bool` | `True` | Enable the google_scholar tool and include it in the system prompt |
 | `VISIT_ENABLED` | `bool` | `True` | Enable the visit tool and include it in the system prompt |
+| `VISIT_EXTRACTOR_MODEL_ID` | `str` | `""` | Optional extractor model override for visit; forwarded to visit tool valve `SUMMARY_MODEL_NAME` when non-empty |
 | `AUTO_INSTALL_TOOLS` | `bool` | `True` | Auto-install enabled tool modules into Open WebUI's tool registry on startup |
 | `TEMPERATURE` | `float` | `0.6` | Sampling temperature (0–2) |
 | `TOP_P` | `float` | `0.95` | Nucleus sampling (0–1) |
@@ -139,10 +142,13 @@ Browse all releases on the [Releases](https://github.com/starship-s/tongyi-deepr
 ## Visit Tool Valves Reference
 
 | Valve | Type | Default | Description |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `SUMMARY_MODEL_API_KEY` | `str` | `""` | API key for the extractor LLM |
 | `SUMMARY_MODEL_BASE_URL` | `str` | `https://openrouter.ai/api/v1` | OpenAI-compatible base URL |
 | `SUMMARY_MODEL_NAME` | `str` | `qwen/qwen3-30b-a3b-instruct-2507` | Extractor model |
 | `SUMMARY_TEMPERATURE` | `float` | `0.7` | Extractor temperature (0–2) |
 | `MAX_PAGE_CHARS` | `int` | `400000` | Max chars kept from a fetched page (~95K tokens) |
 | `MAX_RETRIES` | `int` | `3` | LLM retry attempts per URL |
+
+When the visit tool is executed through the pipe, `VISIT_EXTRACTOR_MODEL_ID` can
+override `SUMMARY_MODEL_NAME` if it is non-empty.

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "tongyi-deepresearch-openwebui-pipeline"
-version = "0.2.19"
+version = "0.2.20"
 description = "Agentic deep-research pipe and tools for Open WebUI, powered by Tongyi DeepResearch via OpenAI-compatible API."
 readme = "README.md"
 requires-python = "~=3.11.0"
@@ -12,6 +12,7 @@ authors = [{name = "starship-s"}]
 license = {text = "MIT"}
 dependencies = [
     "httpx>=0.28.1",
+    "cryptography",
     "pydantic>=2.12.5",
 ]
 

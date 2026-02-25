@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.20] - 2026-02-25
+
+### Added
+
+- `EncryptedStr` valve type for `API_KEY`: API keys are encrypted at rest when
+  `WEBUI_SECRET_KEY` is set in the Open WebUI environment. Decryption happens
+  only at runtime when making API requests.
+- `VISIT_EXTRACTOR_MODEL_ID` valve to override the visit tool's extractor model
+  (`SUMMARY_MODEL_NAME`) when non-empty.
+- `cryptography` dependency for Fernet-based encryption of valve secrets.
+- Test coverage for `EncryptedStr`, `_resolve_api_key`, and related helpers in
+  `tests/test_pipe_helpers.py`.
+
+### Changed
+
+- `API_KEY` valve type changed from `str` to `EncryptedStr`; README documents
+  `WEBUI_SECRET_KEY` requirement for encrypted-at-rest storage.
+- Authorization header is redacted in debug logs (prefix-only) to avoid
+  leaking API keys.
+- Preflight and LLM call paths now use `_resolve_api_key()` for consistent
+  decryption and validation; clearer error messages when decryption fails.
+
 ## [0.2.19] - 2026-02-25
 
 ### Fixed
@@ -233,7 +255,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Pipe delegates `visit` calls to the standalone tool when `VISIT_TOOL_ENABLED=True`.
 - Project is now installable via `pip install` using hatchling.
 
-[Unreleased]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.17...HEAD
+[Unreleased]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.20...HEAD
+[0.2.20]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.19...v0.2.20
+[0.2.19]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.18...v0.2.19
+[0.2.18]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.17...v0.2.18
 [0.2.17]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.16...v0.2.17
 [0.2.16]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.15...v0.2.16
 [0.2.15]: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline/compare/v0.2.14...v0.2.15

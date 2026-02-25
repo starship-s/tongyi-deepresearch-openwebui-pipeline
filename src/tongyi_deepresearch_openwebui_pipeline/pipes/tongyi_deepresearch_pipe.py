@@ -3,21 +3,23 @@ id: tongyi_deepresearch_pipe
 title: Tongyi DeepResearch
 author: starship-s
 author_url: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline
-version: 0.2.19
+version: 0.2.20
 license: MIT
 description: Agentic deep-research pipe for Open WebUI, powered by Tongyi DeepResearch.
 required_open_webui_version: 0.8.0
-requirements: httpx
+requirements: httpx,cryptography
 """
 
 from __future__ import annotations
 
 import asyncio
 import base64
+import hashlib
 import html
 import importlib
 import json
 import logging
+import os
 import re
 import time
 from collections.abc import (
@@ -28,11 +30,17 @@ from collections.abc import (
 )
 from dataclasses import dataclass
 from datetime import date
-from typing import ClassVar
+from typing import ClassVar, Protocol
 from uuid import uuid4
 
 import httpx
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, GetCoreSchemaHandler
+from pydantic_core import core_schema
+
+try:
+    from cryptography.fernet import Fernet  # type: ignore[import-not-found]
+except ImportError:  # pragma: no cover - optional at runtime
+    Fernet = None  # type: ignore[assignment]
 
 logger = logging.getLogger(__name__)
 
@@ -41,15 +49,106 @@ logger = logging.getLogger(__name__)
 # =========================================================================== #
 
 # Must stay in sync with docstring metadata (version:) and pyproject.toml.
-_VERSION = "0.2.19"
+_VERSION = "0.2.20"
 
 HTTP_OK = 200
 STATUS_PING_INTERVAL_S = 4
 _MIN_MESSAGES_FOR_CONTEXT_OVERWRITE = 3
 COST_DISPLAY_THRESHOLD = 0.01
+AUTH_LOG_PREFIX_CHARS = 10
 THINK_OPEN_TAG = "<think>\n"
 THINK_CLOSE_TAG = "\n</think>\n"
 TOOL_RESULT_ATTR_MAX_CHARS = 1200
+
+# =========================================================================== #
+#  Secret handling                                                            #
+# =========================================================================== #
+
+
+class EncryptedStr(str):
+    """String that encrypts at rest using ``WEBUI_SECRET_KEY``.
+
+    The value is encrypted when stored by valves (if ``WEBUI_SECRET_KEY`` is set)
+    and decrypted only at runtime right before use in request headers.
+    """
+
+    _ENCRYPTION_PREFIX = "encrypted:"
+    __slots__ = ()
+
+    def __new__(cls, value: object = "") -> EncryptedStr:
+        """Create an encrypted string instance from raw input text."""
+        text = "" if value is None else str(value)
+        if not text:
+            return str.__new__(cls, "")
+        if text.startswith(cls._ENCRYPTION_PREFIX):
+            return str.__new__(cls, text)
+        return str.__new__(cls, cls.encrypt(text))
+
+    @classmethod
+    def __get_pydantic_core_schema__(
+        cls,
+        _source_type: object,
+        _handler: GetCoreSchemaHandler,
+    ) -> core_schema.CoreSchema:
+        """Tell Pydantic to validate this custom type from ``str`` input."""
+        return core_schema.no_info_after_validator_function(
+            cls,
+            core_schema.str_schema(),
+            serialization=core_schema.to_string_ser_schema(),
+        )
+
+    class _FernetLike(Protocol):
+        """Subset of Fernet methods needed by this class."""
+
+        def encrypt(self, data: bytes) -> bytes:
+            """Encrypt plaintext bytes."""
+            ...
+
+        def decrypt(self, token: bytes) -> bytes:
+            """Decrypt ciphertext bytes."""
+            ...
+
+    @staticmethod
+    def _build_fernet() -> _FernetLike | None:
+        """Build a Fernet instance from ``WEBUI_SECRET_KEY`` when available."""
+        if Fernet is None:
+            return None
+        secret = os.getenv("WEBUI_SECRET_KEY", "").strip()
+        if not secret:
+            return None
+        digest = hashlib.sha256(secret.encode("utf-8")).digest()
+        key = base64.urlsafe_b64encode(digest)
+        return Fernet(key)
+
+    @classmethod
+    def encrypt(cls, value: str) -> str:
+        """Encrypt *value* if encryption is configured, otherwise pass through."""
+        if not value:
+            return ""
+        fernet = cls._build_fernet()
+        if fernet is None:
+            return value
+        token = fernet.encrypt(value.encode("utf-8")).decode("utf-8")
+        return f"{cls._ENCRYPTION_PREFIX}{token}"
+
+    @classmethod
+    def decrypt(cls, value: str | None) -> str:
+        """Decrypt *value* when it has the encrypted prefix and key is available."""
+        if not value:
+            return ""
+        if not value.startswith(cls._ENCRYPTION_PREFIX):
+            return value
+        fernet = cls._build_fernet()
+        if fernet is None:
+            return value
+        token = value[len(cls._ENCRYPTION_PREFIX) :]
+        if not token:
+            return value
+        try:
+            return fernet.decrypt(token.encode("utf-8")).decode("utf-8")
+        except Exception:
+            return value
+
 
 # =========================================================================== #
 #  Tool definitions (injected into the system prompt as JSON)                  #
@@ -261,9 +360,12 @@ class Pipe:
     class Valves(BaseModel):
         """User-configurable settings shown in the Admin UI."""
 
-        API_KEY: str = Field(
-            default="",
-            description="API key for the OpenAI-compatible endpoint",
+        API_KEY: EncryptedStr = Field(
+            default_factory=EncryptedStr,
+            description=(
+                "API key for the OpenAI-compatible endpoint."
+                " Encrypted at rest when WEBUI_SECRET_KEY is configured."
+            ),
         )
         API_BASE_URL: str = Field(
             default="https://openrouter.ai/api/v1",
@@ -311,6 +413,13 @@ class Pipe:
         VISIT_ENABLED: bool = Field(
             default=True,
             description=("Enable the visit tool and include it in the system prompt."),
+        )
+        VISIT_EXTRACTOR_MODEL_ID: str = Field(
+            default="",
+            description=(
+                "Optional model ID override for visit-tool extraction."
+                " Forwards to visit tool valve SUMMARY_MODEL_NAME."
+            ),
         )
         AUTO_INSTALL_TOOLS: bool = Field(
             default=True,
@@ -877,9 +986,13 @@ class Pipe:
             usage_dict). *usage_dict* may be ``None``
             if the provider did not report usage.
         """
+        api_key, api_key_error = self._resolve_api_key()
+        if api_key_error or not api_key:
+            raise RuntimeError(api_key_error or "API key is not configured.")
+
         url = f"{self.valves.API_BASE_URL.rstrip('/')}/chat/completions"
         headers = {
-            "Authorization": (f"Bearer {self.valves.API_KEY}"),
+            "Authorization": (f"Bearer {api_key}"),
             "Content-Type": "application/json",
             "HTTP-Referer": "https://openwebui.com",
             "X-Title": "Open WebUI - DeepResearch",
@@ -900,6 +1013,12 @@ class Pipe:
 
         for attempt in range(max_retries):
             try:
+                if logger.isEnabledFor(logging.DEBUG):
+                    logger.debug(
+                        "Calling LLM endpoint %s with headers=%s",
+                        url,
+                        self._redact_headers_for_log(headers),
+                    )
                 return await self._stream_completion(
                     ctx,
                     url,
@@ -917,6 +1036,19 @@ class Pipe:
                     await asyncio.sleep(wait)
 
         raise last_exc  # type: ignore[misc]
+
+    @staticmethod
+    def _redact_headers_for_log(headers: dict[str, str]) -> dict[str, str]:
+        """Return a log-safe header dict with redacted authorization token."""
+        redacted = dict(headers)
+        token = redacted.get("Authorization")
+        if isinstance(token, str):
+            redacted["Authorization"] = (
+                f"{token[:AUTH_LOG_PREFIX_CHARS]}..."
+                if len(token) > AUTH_LOG_PREFIX_CHARS
+                else "***"
+            )
+        return redacted
 
     async def _emit_reasoning_delta(
         self,
@@ -1228,8 +1360,9 @@ class Pipe:
         self, ctx: _RequestContext, urls: list[str], goal: str
     ) -> str:
         """Execute the visit tool using the configured backend."""
-        if self.valves.VISIT_ENABLED and self.valves.API_KEY:
-            return await self._execute_visit_with_tool(ctx, urls, goal)
+        api_key, _api_key_error = self._resolve_api_key()
+        if self.valves.VISIT_ENABLED and api_key:
+            return await self._execute_visit_with_tool(ctx, urls, goal, api_key)
         return await self._execute_visit_builtin(ctx, urls, goal)
 
     @staticmethod
@@ -1289,7 +1422,7 @@ class Pipe:
         return None
 
     async def _execute_visit_with_tool(
-        self, ctx: _RequestContext, urls: list[str], goal: str
+        self, ctx: _RequestContext, urls: list[str], goal: str, api_key: str
     ) -> str:
         """Visit URLs using the standalone deepresearch_visit_tool module."""
         VisitTools = self._resolve_visit_tools_class()  # noqa: N806
@@ -1302,9 +1435,12 @@ class Pipe:
 
         visit_tools = VisitTools()
         visit_tools.request = ctx.request
-        visit_tools.valves.SUMMARY_MODEL_API_KEY = self.valves.API_KEY
+        visit_tools.valves.SUMMARY_MODEL_API_KEY = api_key
         visit_tools.valves.SUMMARY_MODEL_BASE_URL = self.valves.API_BASE_URL
         visit_tools.valves.MAX_PAGE_CHARS = self.valves.MAX_PAGE_LENGTH
+        extractor_model_id = self.valves.VISIT_EXTRACTOR_MODEL_ID.strip()
+        if extractor_model_id:
+            visit_tools.valves.SUMMARY_MODEL_NAME = extractor_model_id
 
         pipe_self = self
 
@@ -1663,10 +1799,11 @@ class Pipe:
 
     def _preflight_check(self, ctx: _RequestContext) -> str | None:
         """Return an error message if configuration is invalid."""
-        if not self.valves.API_KEY:
+        _api_key, api_key_error = self._resolve_api_key()
+        if api_key_error:
             return (
-                "**Configuration error:** API key is not"
-                " set. Go to *Admin Panel \u2192 Functions"
+                f"**Configuration error:** {api_key_error}"
+                " Go to *Admin Panel \u2192 Functions"
                 " \u2192 Tongyi DeepResearch \u2192 Valves*"
                 " to configure it."
             )
@@ -1679,6 +1816,27 @@ class Pipe:
                 " WebUI (0.5.0+)."
             )
         return None
+
+    def _resolve_api_key(self) -> tuple[str | None, str | None]:
+        """Resolve and validate the runtime API key from valve storage."""
+        raw_value = str(self.valves.API_KEY or "").strip()
+        if not raw_value:
+            return (None, "API key is not set.")
+
+        decrypted = EncryptedStr.decrypt(raw_value).strip()
+
+        if raw_value.startswith(EncryptedStr._ENCRYPTION_PREFIX) and (
+            not decrypted or decrypted.startswith(EncryptedStr._ENCRYPTION_PREFIX)
+        ):
+            return (
+                None,
+                "API key is encrypted but cannot be decrypted."
+                " Ensure WEBUI_SECRET_KEY is set and unchanged.",
+            )
+
+        if not decrypted:
+            return (None, "API key is empty.")
+        return (decrypted, None)
 
     def _build_initial_messages(self, body: dict) -> list[dict]:
         """Build the initial message list from the user's request."""

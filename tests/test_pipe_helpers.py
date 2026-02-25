@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
+
 from tongyi_deepresearch_openwebui_pipeline.pipes.tongyi_deepresearch_pipe import (
+    EncryptedStr,
     Pipe,
     _CostTracker,
     _fmt_visit_fallback,
@@ -368,3 +371,132 @@ class TestFmtVisitFallback:
     def test_does_not_leak_error(self) -> None:
         result = _fmt_visit_fallback("http://x.com", "goal", "secret error")
         assert "secret error" not in result
+
+
+# ------------------------------------------------------------------ #
+#  EncryptedStr / API key resolution
+# ------------------------------------------------------------------ #
+
+
+class TestEncryptedStr:
+    """Tests for EncryptedStr encryption and decryption behavior."""
+
+    def test_passthrough_without_webui_secret(self, monkeypatch) -> None:
+        monkeypatch.delenv("WEBUI_SECRET_KEY", raising=False)
+        raw = EncryptedStr("plain-token")
+        assert str(raw) == "plain-token"
+        assert EncryptedStr.decrypt(str(raw)) == "plain-token"
+
+    def test_encrypts_and_decrypts_with_webui_secret(self, monkeypatch) -> None:
+        monkeypatch.setenv("WEBUI_SECRET_KEY", "unit-test-secret")
+        encrypted = EncryptedStr("plain-token")
+        stored = str(encrypted)
+        assert EncryptedStr.decrypt(stored) == "plain-token"
+        assert stored == "plain-token" or stored.startswith(
+            EncryptedStr._ENCRYPTION_PREFIX
+        )
+
+
+class TestResolveApiKey:
+    """Tests for Pipe._resolve_api_key."""
+
+    def test_resolve_api_key_missing(self, monkeypatch) -> None:
+        monkeypatch.delenv("WEBUI_SECRET_KEY", raising=False)
+        pipe = Pipe()
+        pipe.valves.API_KEY = ""
+        api_key, error = pipe._resolve_api_key()
+        assert api_key is None
+        assert error is not None
+        assert "not set" in error
+
+    def test_resolve_api_key_encrypted_roundtrip(self, monkeypatch) -> None:
+        monkeypatch.setenv("WEBUI_SECRET_KEY", "unit-test-secret")
+        pipe = Pipe()
+        pipe.valves.API_KEY = "plain-token"
+        api_key, error = pipe._resolve_api_key()
+        assert error is None
+        assert api_key == "plain-token"
+
+    def test_resolve_api_key_fails_when_encrypted_and_no_secret(
+        self,
+        monkeypatch,
+    ) -> None:
+        encrypted = f"{EncryptedStr._ENCRYPTION_PREFIX}not-a-real-token"
+        monkeypatch.delenv("WEBUI_SECRET_KEY", raising=False)
+
+        pipe = Pipe()
+        pipe.valves.API_KEY = encrypted
+        api_key, error = pipe._resolve_api_key()
+        assert api_key is None
+        assert error is not None
+        assert "cannot be decrypted" in error
+
+
+# ------------------------------------------------------------------ #
+#  Visit extractor model override
+# ------------------------------------------------------------------ #
+
+
+class TestVisitExtractorModelOverride:
+    """Tests for forwarding the visit extractor model override valve."""
+
+    class _FakeVisitTools:
+        class _FakeValves:
+            def __init__(self) -> None:
+                self.SUMMARY_MODEL_NAME = "tool-default-model"
+                self.SUMMARY_MODEL_API_KEY = ""
+                self.SUMMARY_MODEL_BASE_URL = ""
+                self.MAX_PAGE_CHARS = 0
+
+        def __init__(self) -> None:
+            self.request = None
+            self.valves = self._FakeValves()
+
+        async def visit(
+            self,
+            urls: list[str],
+            goal: str,
+            __event_emitter__=None,
+        ) -> str:
+            del urls, goal, __event_emitter__
+            return self.valves.SUMMARY_MODEL_NAME
+
+    def test_keeps_tool_default_when_pipe_override_is_empty(self, monkeypatch) -> None:
+        pipe = Pipe()
+        pipe.valves.VISIT_EXTRACTOR_MODEL_ID = "   "
+        monkeypatch.setattr(
+            Pipe,
+            "_resolve_visit_tools_class",
+            staticmethod(lambda: self._FakeVisitTools),
+        )
+        ctx = pipe._store_request_context(None, None, None)
+
+        result = asyncio.run(
+            pipe._execute_visit_with_tool(
+                ctx,
+                ["https://example.com"],
+                "Extract relevant information",
+                "test-api-key",
+            )
+        )
+        assert result == "tool-default-model"
+
+    def test_applies_pipe_override_when_non_empty(self, monkeypatch) -> None:
+        pipe = Pipe()
+        pipe.valves.VISIT_EXTRACTOR_MODEL_ID = "openai/gpt-4.1-mini"
+        monkeypatch.setattr(
+            Pipe,
+            "_resolve_visit_tools_class",
+            staticmethod(lambda: self._FakeVisitTools),
+        )
+        ctx = pipe._store_request_context(None, None, None)
+
+        result = asyncio.run(
+            pipe._execute_visit_with_tool(
+                ctx,
+                ["https://example.com"],
+                "Extract relevant information",
+                "test-api-key",
+            )
+        )
+        assert result == "openai/gpt-4.1-mini"
