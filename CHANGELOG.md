@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.19] - 2026-02-25
+
+### Fixed
+
+- Pyright compatibility in overlay model ID resolution:
+  - Replaced direct `from open_webui.main import app` with `importlib.import_module`
+    so local development environments without Open WebUI installed do not trigger
+    `reportMissingImports`.
+  - Tightened iterable handling in `_extract_live_overlay_candidates()` using an
+    explicit `Iterable` type guard instead of relying on `TypeError` fallback.
+
 ## [0.2.18] - 2026-02-25
 
 ### Fixed

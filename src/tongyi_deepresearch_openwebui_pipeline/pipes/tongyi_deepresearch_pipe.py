@@ -3,7 +3,7 @@ id: tongyi_deepresearch_pipe
 title: Tongyi DeepResearch
 author: starship-s
 author_url: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline
-version: 0.2.18
+version: 0.2.19
 license: MIT
 description: Agentic deep-research pipe for Open WebUI, powered by Tongyi DeepResearch.
 required_open_webui_version: 0.8.0
@@ -15,14 +15,16 @@ from __future__ import annotations
 import asyncio
 import base64
 import html
+import importlib
 import json
 import logging
 import re
 import time
-from collections.abc import (  # noqa: TC003 — runtime needed by Open WebUI
+from collections.abc import (
     AsyncGenerator,
     Awaitable,
     Callable,
+    Iterable,
 )
 from dataclasses import dataclass
 from datetime import date
@@ -39,7 +41,7 @@ logger = logging.getLogger(__name__)
 # =========================================================================== #
 
 # Must stay in sync with docstring metadata (version:) and pyproject.toml.
-_VERSION = "0.2.18"
+_VERSION = "0.2.19"
 
 HTTP_OK = 200
 STATUS_PING_INTERVAL_S = 4
@@ -594,10 +596,9 @@ class Pipe:
             return [], list(raw_models)
         if raw_models is None:
             return [], []
-        try:
+        if isinstance(raw_models, Iterable):
             return [], list(raw_models)
-        except TypeError:
-            return [], []
+        return [], []
 
     @staticmethod
     def _resolve_overlay_model_ids() -> list[str]:
@@ -620,8 +621,8 @@ class Pipe:
             resolved.append(normalized)
 
         try:
-            from open_webui.main import app as _app  # noqa: PLC0415
-
+            _app_module = importlib.import_module("open_webui.main")
+            _app = getattr(_app_module, "app", None)
             state = getattr(_app, "state", None)
             raw_models = getattr(state, "MODELS", None) if state is not None else None
             live_ids, iterable_models = Pipe._extract_live_overlay_candidates(
