@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.18] - 2026-02-25
+
+### Fixed
+
+- Model metadata overlay now resolves and updates all matching Tongyi pipe model IDs
+  discovered from Open WebUI's live `app.state.MODELS`, then appends known fallback
+  IDs for compatibility across Open WebUI versions.
+- Overlay ID discovery now degrades gracefully when Open WebUI internals are unavailable
+  by logging debug context instead of silently swallowing failures.
+
+### Added
+
+- Added helper coverage in `tests/test_pipe_helpers.py` for overlay-ID resolution paths:
+  model ID extraction, pipe-ID matching, live candidate extraction across mapping/iterable
+  shapes, and deduplicated fallback ID behavior.
+
 ## [0.2.17] - 2026-02-22
 
 ### Fixed

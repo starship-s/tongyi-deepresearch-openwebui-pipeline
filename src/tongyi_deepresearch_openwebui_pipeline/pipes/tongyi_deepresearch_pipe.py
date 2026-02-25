@@ -3,7 +3,7 @@ id: tongyi_deepresearch_pipe
 title: Tongyi DeepResearch
 author: starship-s
 author_url: https://github.com/starship-s/tongyi-deepresearch-openwebui-pipeline
-version: 0.2.17
+version: 0.2.18
 license: MIT
 description: Agentic deep-research pipe for Open WebUI, powered by Tongyi DeepResearch.
 required_open_webui_version: 0.8.0
@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 # =========================================================================== #
 
 # Must stay in sync with docstring metadata (version:) and pyproject.toml.
-_VERSION = "0.2.17"
+_VERSION = "0.2.18"
 
 HTTP_OK = 200
 STATUS_PING_INTERVAL_S = 4
@@ -559,6 +559,93 @@ class Pipe:
             )
             return None
 
+    @staticmethod
+    def _extract_model_id_from_obj(model: object) -> str | None:
+        """Extract a model ID from dict/object records returned by Open WebUI."""
+        if isinstance(model, dict):
+            for key in ("id", "model_id"):
+                value = model.get(key)
+                if isinstance(value, str) and value.strip():
+                    return value.strip()
+            return None
+        for attr in ("id", "model_id"):
+            value = getattr(model, attr, None)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        return None
+
+    @staticmethod
+    def _looks_like_our_pipe_id(model_id: str) -> bool:
+        """Return whether a model ID appears to belong to this pipe."""
+        lowered = model_id.lower()
+        return lowered.endswith(".tongyi_deepresearch") and (
+            "tongyi_deepresearch" in lowered
+        )
+
+    @staticmethod
+    def _extract_live_overlay_candidates(raw_models: object) -> tuple[list[str], list]:
+        """Extract potential IDs and model objects from Open WebUI model state."""
+        if isinstance(raw_models, dict):
+            # Some versions use id -> model mapping.
+            return [key for key in raw_models if isinstance(key, str)], list(
+                raw_models.values()
+            )
+        if isinstance(raw_models, (list, tuple)):
+            return [], list(raw_models)
+        if raw_models is None:
+            return [], []
+        try:
+            return [], list(raw_models)
+        except TypeError:
+            return [], []
+
+    @staticmethod
+    def _resolve_overlay_model_ids() -> list[str]:
+        """
+        Resolve pipe model IDs that should receive metadata overlays.
+
+        Prefer live IDs discovered from ``open_webui.main.app.state.MODELS``, then
+        append known fallbacks for compatibility across Open WebUI versions.
+        """
+        resolved: list[str] = []
+        seen: set[str] = set()
+
+        def _add(mid: str | None) -> None:
+            if not isinstance(mid, str):
+                return
+            normalized = mid.strip()
+            if not normalized or normalized in seen:
+                return
+            seen.add(normalized)
+            resolved.append(normalized)
+
+        try:
+            from open_webui.main import app as _app  # noqa: PLC0415
+
+            state = getattr(_app, "state", None)
+            raw_models = getattr(state, "MODELS", None) if state is not None else None
+            live_ids, iterable_models = Pipe._extract_live_overlay_candidates(
+                raw_models
+            )
+            for live_id in live_ids:
+                if Pipe._looks_like_our_pipe_id(live_id):
+                    _add(live_id)
+            for model_obj in iterable_models:
+                model_id = Pipe._extract_model_id_from_obj(model_obj)
+                if model_id and Pipe._looks_like_our_pipe_id(model_id):
+                    _add(model_id)
+        except Exception:
+            # Open WebUI internals may be unavailable depending on import context.
+            logger.debug(
+                "Could not resolve live overlay model IDs from Open WebUI state.",
+                exc_info=True,
+            )
+
+        # Known IDs across observed environments/versions.
+        _add("tongyi_deepresearch.tongyi_deepresearch")
+        _add("tongyi_deepresearch_pipe.tongyi_deepresearch")
+        return resolved
+
     def _auto_install_model_metadata(self) -> None:  # noqa: C901
         """Create a Model DB entry so Open WebUI displays our icon and description.
 
@@ -575,24 +662,16 @@ class Pipe:
         except ImportError:
             return
 
-        model_id = "tongyi_deepresearch_pipe.tongyi_deepresearch"
+        model_ids = Pipe._resolve_overlay_model_ids() or [
+            "tongyi_deepresearch.tongyi_deepresearch",
+            "tongyi_deepresearch_pipe.tongyi_deepresearch",
+        ]
         _icon_url = (
             "https://raw.githubusercontent.com"
             "/Alibaba-NLP/DeepResearch"
             "/main/assets/tongyi.png"
         )
-        existing = Models.get_model_by_id(model_id)
-        existing_icon = None
-        if existing is not None:
-            meta_dict = Pipe._clone_meta_from_existing(existing)
-            existing_icon = meta_dict.get("profile_image_url")
         fetched_icon = Pipe._fetch_icon_as_data_url(_icon_url)
-        if fetched_icon:
-            desired_icon = fetched_icon
-        elif existing_icon:
-            desired_icon = existing_icon
-        else:
-            desired_icon = _icon_url
         desired_description = (
             "Tongyi DeepResearch is an agentic large"
             " language model featuring 30.5 billion"
@@ -608,71 +687,85 @@ class Pipe:
             " xbench-DeepSearch, FRAMES and SimpleQA."
         )
 
-        if existing is None:
+        for model_id in model_ids:
+            existing = Models.get_model_by_id(model_id)
+            existing_icon = None
+            if existing is not None:
+                existing_meta_dict = Pipe._clone_meta_from_existing(existing)
+                existing_icon = existing_meta_dict.get("profile_image_url")
+
+            if fetched_icon:
+                desired_icon = fetched_icon
+            elif existing_icon:
+                desired_icon = existing_icon
+            else:
+                desired_icon = _icon_url
+
+            if existing is None:
+                try:
+                    meta = ModelMeta(
+                        profile_image_url=desired_icon,
+                        description=desired_description,
+                    )
+                except Exception:
+                    meta = {
+                        "profile_image_url": desired_icon,
+                        "description": desired_description,
+                    }
+                try:
+                    form = ModelForm(
+                        id=model_id,
+                        base_model_id=None,
+                        name="Tongyi DeepResearch",
+                        meta=meta,
+                        params=ModelParams(),
+                        is_active=True,
+                        access_control=None,
+                    )
+                    Models.insert_new_model(form, user_id="")
+                    logger.info("Auto-installed model metadata: %s", model_id)
+                except Exception:
+                    logger.warning(
+                        "Could not auto-install model metadata for %s",
+                        model_id,
+                        exc_info=True,
+                    )
+                continue
+
+            # Update existing entry if icon or description differ.
+            meta_dict = Pipe._clone_meta_from_existing(existing)
+
+            icon_match = meta_dict.get("profile_image_url") == desired_icon
+            desc_match = meta_dict.get("description") == desired_description
+            if icon_match and desc_match:
+                continue
+
+            meta_dict["profile_image_url"] = desired_icon
+            meta_dict["description"] = desired_description
+
             try:
-                meta = ModelMeta(
-                    profile_image_url=desired_icon,
-                    description=desired_description,
-                )
+                meta_obj = ModelMeta(**meta_dict)
             except Exception:
-                meta = {
-                    "profile_image_url": desired_icon,
-                    "description": desired_description,
-                }
+                meta_obj = meta_dict
+
             try:
-                form = ModelForm(
-                    id=model_id,
-                    base_model_id=None,
-                    name="Tongyi DeepResearch",
-                    meta=meta,
-                    params=ModelParams(),
-                    is_active=True,
-                    access_control=None,
+                payload = ModelForm(
+                    id=existing.id,
+                    base_model_id=getattr(existing, "base_model_id", None),
+                    name=getattr(existing, "name", "Tongyi DeepResearch"),
+                    meta=meta_obj,
+                    params=getattr(existing, "params", None) or ModelParams(),
+                    access_control=getattr(existing, "access_control", None),
+                    is_active=getattr(existing, "is_active", True),
                 )
-                Models.insert_new_model(form, user_id="")
-                logger.info("Auto-installed model metadata: %s", model_id)
+                Models.update_model_by_id(model_id, payload)
+                logger.info("Auto-updated model metadata: %s", model_id)
             except Exception:
                 logger.warning(
-                    "Could not auto-install model metadata for %s",
+                    "Could not auto-update model metadata for %s",
                     model_id,
                     exc_info=True,
                 )
-            return
-
-        # Update existing entry if icon or description differ
-        meta_dict = Pipe._clone_meta_from_existing(existing)
-
-        icon_match = meta_dict.get("profile_image_url") == desired_icon
-        desc_match = meta_dict.get("description") == desired_description
-        if icon_match and desc_match:
-            return
-
-        meta_dict["profile_image_url"] = desired_icon
-        meta_dict["description"] = desired_description
-
-        try:
-            meta_obj = ModelMeta(**meta_dict)
-        except Exception:
-            meta_obj = meta_dict
-
-        try:
-            payload = ModelForm(
-                id=existing.id,
-                base_model_id=getattr(existing, "base_model_id", None),
-                name=getattr(existing, "name", "Tongyi DeepResearch"),
-                meta=meta_obj,
-                params=getattr(existing, "params", None) or ModelParams(),
-                access_control=getattr(existing, "access_control", None),
-                is_active=getattr(existing, "is_active", True),
-            )
-            Models.update_model_by_id(model_id, payload)
-            logger.info("Auto-updated model metadata: %s", model_id)
-        except Exception:
-            logger.warning(
-                "Could not auto-update model metadata for %s",
-                model_id,
-                exc_info=True,
-            )
 
     @staticmethod
     def _read_tool_source(module_name: str) -> str | None:

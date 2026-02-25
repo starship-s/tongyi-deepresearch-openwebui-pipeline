@@ -225,6 +225,84 @@ class TestBuildSystemPrompt:
 
 
 # ------------------------------------------------------------------ #
+#  Overlay model ID helpers
+# ------------------------------------------------------------------ #
+
+
+class TestOverlayModelIdHelpers:
+    """Tests for model metadata overlay helper methods."""
+
+    def test_extract_model_id_from_obj_dict(self) -> None:
+        assert (
+            Pipe._extract_model_id_from_obj(
+                {"id": "  tongyi_deepresearch_pipe.tongyi_deepresearch  "}
+            )
+            == "tongyi_deepresearch_pipe.tongyi_deepresearch"
+        )
+        assert (
+            Pipe._extract_model_id_from_obj(
+                {"model_id": "tongyi_deepresearch.tongyi_deepresearch"}
+            )
+            == "tongyi_deepresearch.tongyi_deepresearch"
+        )
+
+    def test_extract_model_id_from_obj_attributes(self) -> None:
+        class _ModelObj:
+            def __init__(self, *, model_id: str | None = None) -> None:
+                self.model_id = model_id
+
+        obj = _ModelObj(model_id="  tongyi_deepresearch.tongyi_deepresearch  ")
+        assert (
+            Pipe._extract_model_id_from_obj(obj)
+            == "tongyi_deepresearch.tongyi_deepresearch"
+        )
+
+    def test_looks_like_our_pipe_id(self) -> None:
+        assert Pipe._looks_like_our_pipe_id("tongyi_deepresearch.tongyi_deepresearch")
+        assert Pipe._looks_like_our_pipe_id(
+            "tongyi_deepresearch_pipe.tongyi_deepresearch"
+        )
+        assert not Pipe._looks_like_our_pipe_id("openai.gpt-4o")
+        assert not Pipe._looks_like_our_pipe_id("tongyi_deepresearch")
+
+    def test_extract_live_overlay_candidates_for_dict(self) -> None:
+        model_map = {
+            "tongyi_deepresearch.tongyi_deepresearch": {"id": "m1"},
+            123: {"id": "m2"},
+        }
+        ids, models = Pipe._extract_live_overlay_candidates(model_map)
+        assert ids == ["tongyi_deepresearch.tongyi_deepresearch"]
+        assert models == [{"id": "m1"}, {"id": "m2"}]
+
+    def test_extract_live_overlay_candidates_for_iterables(self) -> None:
+        ids, models = Pipe._extract_live_overlay_candidates(("a", "b"))
+        assert ids == []
+        assert models == ["a", "b"]
+
+        class _Iterable:
+            def __iter__(self):
+                return iter(["x", "y"])
+
+        ids2, models2 = Pipe._extract_live_overlay_candidates(_Iterable())
+        assert ids2 == []
+        assert models2 == ["x", "y"]
+
+    def test_extract_live_overlay_candidates_for_non_iterable(self) -> None:
+        class _NonIterable:
+            pass
+
+        ids, models = Pipe._extract_live_overlay_candidates(_NonIterable())
+        assert ids == []
+        assert models == []
+
+    def test_resolve_overlay_model_ids_includes_fallbacks(self) -> None:
+        resolved = Pipe._resolve_overlay_model_ids()
+        assert "tongyi_deepresearch.tongyi_deepresearch" in resolved
+        assert "tongyi_deepresearch_pipe.tongyi_deepresearch" in resolved
+        assert len(resolved) == len(set(resolved))
+
+
+# ------------------------------------------------------------------ #
 #  _CostTracker
 # ------------------------------------------------------------------ #
 
