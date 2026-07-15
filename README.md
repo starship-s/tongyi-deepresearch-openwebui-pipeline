@@ -1,3 +1,6 @@
+> [!IMPORTANT]
+> **Archived:** There are no longer any active providers serving the Tongyi DeepResearch model used by this integration, so this project is no longer maintained.
+
 # Tongyi DeepResearch — Open WebUI Pipeline
 
 > Agentic deep-research pipe that bridges Tongyi DeepResearch
